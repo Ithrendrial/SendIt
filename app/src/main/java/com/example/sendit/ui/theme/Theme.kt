@@ -1,58 +1,56 @@
 package com.example.sendit.ui.theme
 
-import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+private val SendItColorScheme = darkColorScheme(
+    primary = SendItOrange,
+    onPrimary = SendItBackground,
+    primaryContainer = SendItAccentContainer,
+    onPrimaryContainer = SendItPeach,
+    inversePrimary = SendItAccentContainer,
+    secondary = SendItPeach,
+    onSecondary = SendItBackground,
+    secondaryContainer = SendItControls,
+    onSecondaryContainer = SendItPeach,
+    tertiary = SendItPeach,
+    onTertiary = SendItBackground,
+    tertiaryContainer = SendItRaised,
+    onTertiaryContainer = SendItPeach,
+    background = SendItBackground,
+    onBackground = SendItText,
+    surface = SendItCard,
+    onSurface = SendItText,
+    surfaceVariant = SendItRaised,
+    onSurfaceVariant = SendItMutedText,
+    surfaceTint = SendItOrange,
+    inverseSurface = SendItText,
+    inverseOnSurface = SendItBackground,
+    surfaceDim = SendItBackground,
+    surfaceBright = SendItControls,
+    surfaceContainerLowest = SendItBackground,
+    surfaceContainerLow = SendItInset,
+    surfaceContainer = SendItCard,
+    surfaceContainerHigh = SendItRaised,
+    surfaceContainerHighest = SendItControls,
+    outline = SendItOutline,
+    outlineVariant = SendItOutlineVariant,
+    error = SendItError,
+    onError = SendItOnError,
+    errorContainer = SendItErrorContainer,
+    onErrorContainer = SendItOnErrorContainer,
+    scrim = Color.Black
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
-)
-
+// The supplied design is dark. Keep its colours consistent across device settings.
 @Composable
-fun SendItTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit
-) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
+fun SendItTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = SendItColorScheme,
         typography = Typography,
+        shapes = Shapes,
         content = content
     )
 }
