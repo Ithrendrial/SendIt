@@ -21,4 +21,6 @@
     <string name="notes">Notes</string>
     <string name="notes_placeholder">Fell on the crux move. Need more core tension.</string>
     <string name="upload_and_analyse">UPLOAD &amp; ANALYSE</string>
+    <string name="video_selected">Video selected</string>
+    <string name="replace_video_hint">Tap to choose a different video</string>
 </resources>

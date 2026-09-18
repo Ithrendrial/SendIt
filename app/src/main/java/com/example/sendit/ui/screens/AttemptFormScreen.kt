@@ -1,6 +1,9 @@
 package com.example.sendit.ui.screens
 
 import android.app.DatePickerDialog
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import androidx.compose.foundation.text.BasicTextField
@@ -56,8 +59,20 @@ import com.example.sendit.ui.theme.SendItSpacing
 import com.example.sendit.ui.theme.SendItTheme
 
 
+private const val VIDEO_MIME_TYPE = "video/*"
+
 @Composable
-fun AttemptFormScreen(modifier: Modifier = Modifier) {
+fun AttemptFormScreen(
+    modifier: Modifier = Modifier,
+    selectedVideo: Uri?,
+    onVideoSelected: (Uri) -> Unit
+) {
+    // Register once with Compose. The picker grants access to the document the user chooses.
+    // Null = cancellation, in which case keep previous selection.
+    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onVideoSelected(uri)
+    }
+
     // Attempt form variables:
     // Changing these values in the State will cause Compose to redraw the UI.
     // rememberSaveable stores this info and persists it across config changes, but isn't stored in the Room.
@@ -97,8 +112,9 @@ fun AttemptFormScreen(modifier: Modifier = Modifier) {
         // Video entry point.
         SectionLabel(stringResource(R.string.attempt_video)) // Video section heading
         Spacer(Modifier.height(SendItSpacing.extraSmall))
-        VideoPlaceholder {
+        VideoPlaceholder(hasSelectedVideo = selectedVideo != null) {
             focusManager.clearFocus()
+            videoPicker.launch(arrayOf(VIDEO_MIME_TYPE))
         }
         Spacer(Modifier.height(SendItSpacing.extraLarge))
 
@@ -265,7 +281,7 @@ private fun GradeDropdown(grade: String, onGradeChange: (String) -> Unit) {
 
 // Styled video entry area.
 @Composable
-private fun VideoPlaceholder(onClick: () -> Unit) {
+private fun VideoPlaceholder(hasSelectedVideo: Boolean, onClick: () -> Unit) {
     val borderColor = MaterialTheme.colorScheme.outlineVariant
     Surface(
         onClick = onClick,
@@ -304,10 +320,14 @@ private fun VideoPlaceholder(onClick: () -> Unit) {
                 )
             }
             Spacer(Modifier.height(SendItSpacing.large))
-            Text(stringResource(R.string.choose_attempt_video), style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+            Text(
+                stringResource(if (hasSelectedVideo) R.string.video_selected else R.string.choose_attempt_video),
+                style = MaterialTheme.typography.titleLarge,
+                textAlign = TextAlign.Center
+            )
             Spacer(Modifier.height(SendItSpacing.small))
             Text(
-                stringResource(R.string.video_picker_hint),
+                stringResource(if (hasSelectedVideo) R.string.replace_video_hint else R.string.video_picker_hint),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f),
                 textAlign = TextAlign.Center
