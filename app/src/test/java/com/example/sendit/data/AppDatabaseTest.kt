@@ -1,7 +1,7 @@
 package com.example.sendit.data
 
 import org.junit.Test
-import kotlin.test.assertNotNull
+import org.junit.Assert.assertNotNull
 
 class AppDatabaseTest {
     @Test
