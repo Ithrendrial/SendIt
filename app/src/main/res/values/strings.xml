@@ -1,3 +1,26 @@
 <resources>
     <string name="app_name">SendIt</string>
+    <string name="new_attempt">New Attempt</string>
+    <string name="route_details">Route Details</string>
+    <string name="route_name">Route Name</string>
+    <string name="route_name_placeholder">Enter route name</string>
+    <string name="sample_route_name">Orange Overhang</string>
+    <string name="grade">Grade</string>
+    <string name="sample_grade">VB</string>
+    <string name="location">Location</string>
+    <string name="location_placeholder">Enter climbing gym name</string>
+    <string name="attempt_video">Attempt Video</string>
+    <string name="choose_attempt_video">Choose attempt video</string>
+    <string name="video_picker_hint">Tap to browse files or gallery</string>
+    <string name="date">Date</string>
+    <string name="sample_date">25/07/2026</string>
+    <string name="outcome">Outcome</string>
+    <string name="sent">Sent</string>
+    <string name="fall">Fall</string>
+    <string name="flash">Flash</string>
+    <string name="notes">Notes</string>
+    <string name="notes_placeholder">Fell on the crux move. Need more core tension.</string>
+    <string name="upload_and_analyse">UPLOAD &amp; ANALYSE</string>
+    <string name="video_selected">Video selected</string>
+    <string name="replace_video_hint">Tap to choose a different video</string>
 </resources>

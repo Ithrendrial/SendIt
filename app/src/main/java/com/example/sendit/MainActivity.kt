@@ -8,10 +8,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.ViewModelProvider
+import com.example.sendit.ui.viewmodels.AttemptFormViewModel
+import com.example.sendit.ui.screens.AttemptFormScreen
 import com.example.sendit.ui.theme.SendItTheme
 
 class MainActivity : ComponentActivity() {
@@ -21,31 +21,18 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
+        // Keep the selected video when Android recreates the activity, such as after rotation.
+        val attemptFormViewModel = ViewModelProvider(this)[AttemptFormViewModel::class.java]
         setContent {
             SendItTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
+                    AttemptFormScreen(
+                        modifier = Modifier.padding(innerPadding),
+                        selectedVideo = attemptFormViewModel.selectedVideo,
+                        onVideoSelected = attemptFormViewModel::selectVideo
                     )
                 }
             }
         }
-    }
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    SendItTheme {
-        Greeting("Android")
     }
 }
