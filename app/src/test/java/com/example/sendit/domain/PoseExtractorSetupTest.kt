@@ -7,6 +7,7 @@ import org.junit.Test
 
 /** Configuration tests only - these do not load MediaPipe's Android native engine. */
 class PoseExtractorSetupTest {
+    // Checks MediaPipe is configured to process a video rather than a single image.
     @Test
     fun options_useVideoModeForImportedVideos() {
         val options = PoseExtractor.createOptions()
@@ -14,6 +15,7 @@ class PoseExtractorSetupTest {
         assertEquals(RunningMode.VIDEO, PoseOptionsTestAccess.runningMode(options))
     }
 
+    // Checks MediaPipe is set to look for one climber per frame.
     @Test
     fun options_requestOneClimberPerFrame() {
         val options = PoseExtractor.createOptions()

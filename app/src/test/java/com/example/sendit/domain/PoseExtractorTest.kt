@@ -11,14 +11,13 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 
 class PoseExtractorTest {
-    // Checks the pose extractor opens the selected video's uri and makes sure each returned frame is from the correct attempt.
+    // Checks the selected video is opened and each frame has the right attempt ID and a unique ID.
     @Test
     fun extract_opensSelectedVideoAndAssociatesFramesWithAttempt() = runBlocking {
         val session = FakeVideoSession(listOf(result(0L), result(47L)))
@@ -37,7 +36,7 @@ class PoseExtractorTest {
         assertEquals(frames.size, frames.map { it.id }.toSet().size)
     }
 
-    // Checks the frames keep their original, sequential timestamps
+    // Checks uneven video timestamps are kept and frame indices start at zero and stay in order.
     @Test
     fun extract_preservesIrregularVideoTimestampsAndSequentialFrameIndices() = runBlocking {
         val timestamps = listOf(0L, 47L, 133L, 205L)
@@ -64,7 +63,7 @@ class PoseExtractorTest {
         assertArrayEquals(expected, frame.coordinates, EXACT_COPY_TOLERANCE)
     }
 
-    // Checks a frame with no detectedpose keeps its timestamp but has an empty coordinate array.
+    // Checks a frame with no detected pose keeps its timestamp but has an empty coordinate array.
     @Test
     fun extract_keepsMissingPoseBetweenDetectionsWithoutRepeatingPreviousPose() = runBlocking {
         val session = FakeVideoSession(listOf(result(0L), result(80L, null), result(160L)))
@@ -100,7 +99,7 @@ class PoseExtractorTest {
         assertTrue(coordinates[VALUES_PER_LANDMARK + PRESENCE_OFFSET].isNaN())
     }
 
-    // Checks video session is closed once after pose extraction
+    // Checks the video session is closed once after pose extraction.
     @Test
     fun extract_closesVideoSessionAfterSuccess() = runBlocking {
         val session = FakeVideoSession(listOf(result(0L)))
@@ -110,7 +109,7 @@ class PoseExtractorTest {
         assertEquals(1, session.closeCount)
     }
 
-    // Checks that a video session with no samples must produce an empty list. 
+    // Checks a video with no samples returns an empty list and the session is still closed.
     @Test
     fun extract_returnsEmptyListWhenVideoHasNoSamplesAndClosesSession() = runBlocking {
         val session = FakeVideoSession(emptyList())
@@ -121,7 +120,7 @@ class PoseExtractorTest {
         assertEquals(1, session.closeCount)
     }
 
-    // Checks error opening a selected video is passed back to caller (not processed)
+    // Checks an error opening the selected video is passed back to the caller.
     @Test
     fun extract_propagatesUnreadableVideoErrorInsteadOfReportingNoPose() {
         val failure = IOException("Selected video cannot be opened")
@@ -131,7 +130,7 @@ class PoseExtractorTest {
             runBlocking { extractor.extract(video()) }
         }
 
-        assertSame(failure, actual)
+        assertOriginalFailure(failure, actual)
     }
 
     // Checks a processing error midway is passed to caller and session closed. No partial results.
@@ -146,11 +145,11 @@ class PoseExtractorTest {
         }
 
         // A partial sequence must not be returned as a successfully processed video.
-        assertSame(failure, actual)
+        assertOriginalFailure(failure, actual)
         assertEquals(1, session.closeCount)
     }
 
-    // Cheks a cancellation midway is passed to caller and session closed. No partial results.
+    // Checks a cancellation midway is passed to the caller and the session is closed.
     @Test
     fun extract_propagatesCancellationAndClosesSession() {
         val cancellation = CancellationException("Processing cancelled")
@@ -190,8 +189,17 @@ class PoseExtractorTest {
         assertEquals(1, session.closeCount)
     }
 
+    // Gives the tests the same video URI and attempt ID without opening a real video.
     private fun video() = PoseExtractor.VideoInput(uri = VIDEO_URI, attemptId = ATTEMPT_ID)
 
+    // Checks the original failure reaches the caller, including through a coroutine error copy.
+    private fun assertOriginalFailure(expected: Exception, actual: Exception) {
+        // Coroutine debugging can copy the error and keep the original as its cause.
+        assertEquals(expected.message, actual.message)
+        assertTrue("Original failure must reach the caller", actual === expected || actual.cause === expected)
+    }
+
+    // Makes 33 fake landmarks with different coordinates so the tests can check their order.
     private fun landmarks(): List<NormalizedLandmark> = List(LANDMARK_COUNT) { index ->
         val fraction = index.toFloat() / LANDMARK_COUNT
         NormalizedLandmark.create(
@@ -200,14 +208,19 @@ class PoseExtractorTest {
         )
     }
 
+    // Makes a fake MediaPipe result at a chosen time. Passing null means no pose was detected.
     private fun result(
         timestampMs: Long,
         pose: List<NormalizedLandmark>? = landmarks()
     ): PoseLandmarkerResult = object : PoseLandmarkerResult() {
+        // Returns the video time supplied by the test.
         override fun timestampMs() = timestampMs
+        // Returns the supplied pose, or an empty list for a missing detection.
         override fun landmarks(): List<List<NormalizedLandmark>> =
             if (pose == null) emptyList() else listOf(pose)
+        // World coordinates are not used by these extraction tests.
         override fun worldLandmarks(): List<List<Landmark>> = emptyList()
+        // These tests do not need a mask showing which pixels belong to the person.
         override fun segmentationMasks(): Optional<List<MPImage>> = Optional.empty()
     }
 
@@ -219,12 +232,14 @@ class PoseExtractorTest {
         var closeCount = 0
             private set
 
+        // Returns the fake results in order, then throws the chosen error or finishes normally.
         override fun next(): PoseLandmarkerResult? {
             if (index < results.size) return results[index++]
             terminalFailure?.let { throw it }
             return null
         }
 
+        // Counts how often the session is closed so the tests can check cleanup.
         override fun close() {
             closeCount++
         }

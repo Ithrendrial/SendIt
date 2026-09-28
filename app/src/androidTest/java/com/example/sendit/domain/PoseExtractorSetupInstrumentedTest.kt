@@ -10,6 +10,7 @@ import org.junit.runner.RunWith
 /** Verifies the packaged model and native runtime together on an Android device. */
 @RunWith(AndroidJUnit4::class)
 class PoseExtractorSetupInstrumentedTest {
+    // Checks the model saved in the app can start MediaPipe on an Android device.
     @Test
     fun packagedModel_initializesPoseLandmarkerWithExtractorOptions() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
