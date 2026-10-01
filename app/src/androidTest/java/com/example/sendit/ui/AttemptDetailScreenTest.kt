@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -67,6 +68,24 @@ class AttemptDetailScreenTest {
         compose.mainClock.advanceTimeBy(1200)
         compose.onNodeWithText("0:01 / 0:02").assertIsDisplayed()
         compose.onNodeWithContentDescription("Play").assertIsDisplayed()
+    }
+
+    // Checks rotating the screen keeps the playback position instead of restarting from the beginning.
+    @Test
+    fun rotatingScreenKeepsPlaybackPosition() {
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent {
+            SendItTheme {
+                AttemptDetailScreen(poseFrames = listOf(frame(0), frame(2000)), videoAspectRatio = 0.75f)
+            }
+        }
+        compose.onNodeWithContentDescription("Playback position")
+            .performSemanticsAction(SemanticsActions.SetProgress) { it(1000f) }
+        compose.onNodeWithText("0:01 / 0:02").assertIsDisplayed()
+
+        restoration.emulateSavedInstanceStateRestore()
+
+        compose.onNodeWithText("0:01 / 0:02").assertIsDisplayed()
     }
 
     // Displays the page with supplied frames, without needing uploaded videos or a database.
