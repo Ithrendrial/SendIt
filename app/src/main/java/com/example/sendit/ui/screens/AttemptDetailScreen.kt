@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,7 +48,9 @@ fun AttemptDetailScreen(
     videoAspectRatio: Float,
     modifier: Modifier = Modifier
 ) {
-    val playback = remember(poseFrames) { PosePlaybackState(poseFrames) }
+    val playback = rememberSaveable(poseFrames, saver = PosePlaybackState.saver(poseFrames)) {
+        PosePlaybackState(poseFrames)
+    }
     PlaybackClock(playback)
 
     Column(
@@ -129,7 +132,7 @@ private fun PlaybackControls(playback: PosePlaybackState) {
             // Video scrub/progress bar
             Slider(
                 value = playback.positionMs.toFloat(),
-                onValueChange = { playback.seekTo(it.toLong()) },
+                onValueChange = { playback.scrubTo(it.toLong()) },
                 valueRange = 0f..playback.durationMs.coerceAtLeast(1L).toFloat(),
                 enabled = playback.durationMs > 0L,
                 modifier = Modifier.weight(1f).semantics { contentDescription = "Playback position" },
