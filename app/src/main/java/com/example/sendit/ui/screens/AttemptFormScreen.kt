@@ -2,6 +2,7 @@ package com.example.sendit.ui.screens
 
 import android.app.DatePickerDialog
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import java.time.LocalDate
@@ -42,6 +43,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
+import androidx.compose.material3.LinearProgressIndicator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
@@ -69,6 +74,7 @@ fun AttemptFormScreen(
     selectedVideo: Uri?,
     onVideoSelected: (Uri) -> Unit,
     processing: Boolean = false,
+    analysisProgress: Int? = null,
     errorMessage: String? = null,
     onSubmit: (AttemptDetails) -> Unit = {}
 ) {
@@ -90,6 +96,18 @@ fun AttemptFormScreen(
 
     val context = LocalContext.current // Needed for the date picker dialogue
     val focusManager = LocalFocusManager.current
+    // Ask Android for the document name once per selection, away from the UI thread.
+    val videoName by produceState<String?>(null, selectedVideo) {
+        value = null
+        val video = selectedVideo ?: return@produceState
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                context.contentResolver.query(video, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+                ?: video.lastPathSegment ?: context.getString(R.string.video_selected)
+        }
+    }
 
     // Column layout places children vertically and incorperates scrolling.
     Column(
@@ -117,7 +135,7 @@ fun AttemptFormScreen(
         // Video entry point.
         SectionLabel(stringResource(R.string.attempt_video)) // Video section heading
         Spacer(Modifier.height(SendItSpacing.extraSmall))
-        VideoPlaceholder(hasSelectedVideo = selectedVideo != null) {
+        VideoPlaceholder(videoName = if (selectedVideo == null) null else videoName ?: stringResource(R.string.loading_video_name)) {
             if (!processing) {
                 focusManager.clearFocus()
                 videoPicker.launch(arrayOf(VIDEO_MIME_TYPE))
@@ -182,6 +200,24 @@ fun AttemptFormScreen(
         Spacer(Modifier.height(40.dp))
         if (errorMessage != null) {
             Text(errorMessage, color = MaterialTheme.colorScheme.error)
+            Spacer(Modifier.height(SendItSpacing.medium))
+        }
+        if (processing) {
+            // The percentage covers pose analysis; copying and saving have their own status text.
+            Text(when (analysisProgress) {
+                null -> stringResource(R.string.preparing_video)
+                100 -> stringResource(R.string.saving_attempt)
+                else -> stringResource(R.string.analysing_video_progress, analysisProgress)
+            })
+            Spacer(Modifier.height(SendItSpacing.small))
+            if (analysisProgress == null) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            } else {
+                LinearProgressIndicator(
+                    progress = { analysisProgress / 100f },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
             Spacer(Modifier.height(SendItSpacing.medium))
         }
         Surface( // Form submission (upload and analysis button).
@@ -301,7 +337,8 @@ private fun GradeDropdown(grade: String, onGradeChange: (String) -> Unit) {
 
 // Styled video entry area.
 @Composable
-private fun VideoPlaceholder(hasSelectedVideo: Boolean, onClick: () -> Unit) {
+private fun VideoPlaceholder(videoName: String?, onClick: () -> Unit) {
+    val hasSelectedVideo = videoName != null
     val borderColor = MaterialTheme.colorScheme.outlineVariant
     Surface(
         onClick = onClick,
@@ -341,7 +378,7 @@ private fun VideoPlaceholder(hasSelectedVideo: Boolean, onClick: () -> Unit) {
             }
             Spacer(Modifier.height(SendItSpacing.large))
             Text(
-                stringResource(if (hasSelectedVideo) R.string.video_selected else R.string.choose_attempt_video),
+                videoName ?: stringResource(R.string.choose_attempt_video),
                 style = MaterialTheme.typography.titleLarge,
                 textAlign = TextAlign.Center
             )

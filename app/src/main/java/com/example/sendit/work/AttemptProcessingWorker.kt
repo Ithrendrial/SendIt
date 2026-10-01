@@ -42,6 +42,7 @@ class AttemptProcessingWorker(context: Context, parameters: WorkerParameters) : 
         var finished = false
         try {
             setForeground(processingNotification())
+            setProgress(workDataOf()) // A restarted job begins with preparing the video again.
             val route = RouteEntity(routeId, inputData.getString("routeName").orEmpty(),
                 inputData.getString("grade").orEmpty(), inputData.getString("location").orEmpty())
             val attempt = AttemptEntity(attemptId, routeId, inputData.getLong("recordedAt", 0),
@@ -51,7 +52,9 @@ class AttemptProcessingWorker(context: Context, parameters: WorkerParameters) : 
             if (repository.getAttempt(attemptId)?.videoAspectRatio == null) {
                 copyVideo(video, temporaryVideo)
                 ClimbAnalyser(applicationContext, PoseExtractor(applicationContext), repository)
-                    .processAttempt(attemptId, routeId, Uri.fromFile(temporaryVideo))
+                    .processAttempt(attemptId, routeId, Uri.fromFile(temporaryVideo)) { percentage ->
+                        setProgress(workDataOf(ANALYSIS_PROGRESS to percentage))
+                    }
             }
             finished = true
             Result.success()
@@ -99,6 +102,7 @@ class AttemptProcessingWorker(context: Context, parameters: WorkerParameters) : 
 
     companion object {
         const val WORK_NAME = "process_attempt"
+        const val ANALYSIS_PROGRESS = "analysisProgress"
         private const val PROCESSING_CHANNEL = "pose_processing"
         private const val PROCESSING_NOTIFICATION_ID = 1
         private const val VIDEO_URI = "videoUri"

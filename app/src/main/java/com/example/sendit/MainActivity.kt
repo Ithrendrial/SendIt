@@ -64,6 +64,7 @@ private fun SendItApp(form: AttemptFormViewModel, repository: ClimbRepository, m
             selectedVideo = form.selectedVideo,
             onVideoSelected = form::selectVideo,
             processing = form.processingStatus,
+            analysisProgress = form.analysisProgress,
             errorMessage = form.errorMessage,
             onSubmit = { form.submitAttempt(context, it) }
         )

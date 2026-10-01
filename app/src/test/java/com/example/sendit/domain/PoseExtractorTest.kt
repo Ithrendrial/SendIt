@@ -228,6 +228,7 @@ class PoseExtractorTest {
         private val results: List<PoseLandmarkerResult>,
         private val terminalFailure: Exception? = null
     ) : PoseExtractor.VideoSession {
+        override val totalFrames = results.size
         private var index = 0
         var closeCount = 0
             private set
