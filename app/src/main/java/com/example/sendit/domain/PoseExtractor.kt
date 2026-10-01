@@ -81,7 +81,7 @@ class PoseExtractor internal constructor(
     }
 
     companion object {
-        private const val MODEL_ASSET_PATH = "pose_landmarker_lite.task"
+        private const val MODEL_ASSET_PATH = "pose_landmarker_full.task"
         private const val CLIMBERS_PER_FRAME = 1
 
         // Creates the function that opens a real video session when extraction starts.
