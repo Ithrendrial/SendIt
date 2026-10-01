@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -41,11 +42,21 @@ import com.example.sendit.R
 import com.example.sendit.domain.PoseFrame
 import com.example.sendit.ui.theme.SendItSpacing
 
+// The form details shown above the playback, taken from the saved route and attempt.
+data class AttemptHeading(
+    val routeName: String,
+    val location: String,
+    val grade: String,
+    val outcome: String
+)
+
 // Shows the reconstructed climb and its playback controls.
 @Composable
 fun AttemptDetailScreen(
     poseFrames: List<PoseFrame>,
     videoAspectRatio: Float,
+    heading: AttemptHeading,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val playback = rememberSaveable(poseFrames, saver = PosePlaybackState.saver(poseFrames)) {
@@ -57,7 +68,7 @@ fun AttemptDetailScreen(
         modifier.fillMaxSize().padding(SendItSpacing.screenPadding),
         verticalArrangement = Arrangement.spacedBy(SendItSpacing.large)
     ) {
-        Text("Attempt detail", style = MaterialTheme.typography.headlineSmall)
+        AttemptHeader(heading, onBack)
         Card(modifier = Modifier.weight(1f).fillMaxWidth(), shape = MaterialTheme.shapes.large) {
             // Controls take their required height first; the body fits in the space left above them.
             Box(
@@ -80,6 +91,34 @@ private val ScrubThumbHeight = 44.dp
 private val PlayButtonPadding = SendItSpacing.medium // 24dp icon + padding = 48dp minimum touch target
 // Keeps the controls tight so the scrub bar has more room.
 private const val ControlsPaddingScale = 2f / 3f
+
+// Back arrow on the left, with the route name and its details centred beside it.
+@Composable
+private fun AttemptHeader(heading: AttemptHeading, onBack: () -> Unit) {
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        BackButton(onBack, Modifier.align(Alignment.CenterStart))
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(heading.routeName, style = MaterialTheme.typography.headlineSmall)
+            Text(
+                "${heading.location} • ${heading.grade} • ${heading.outcome}",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.secondary
+            )
+        }
+    }
+}
+
+// White back arrow, also used while the attempt is loading or failed to load.
+@Composable
+fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
+    IconButton(onClick = onBack, modifier = modifier) {
+        Icon(
+            painterResource(R.drawable.ic_arrow_back),
+            contentDescription = "Back",
+            tint = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
 
 // Uses elapsed screen time so playback speed does not depend on how many poses were detected.
 @Composable
