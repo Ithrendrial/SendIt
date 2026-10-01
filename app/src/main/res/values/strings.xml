@@ -23,4 +23,8 @@
     <string name="upload_and_analyse">UPLOAD &amp; ANALYSE</string>
     <string name="video_selected">Video selected</string>
     <string name="replace_video_hint">Tap to choose a different video</string>
+    <string name="loading_video_name">Loading filename…</string>
+    <string name="preparing_video">Preparing video…</string>
+    <string name="analysing_video_progress">Analysing video… %1$d%%</string>
+    <string name="saving_attempt">Saving results…</string>
 </resources>

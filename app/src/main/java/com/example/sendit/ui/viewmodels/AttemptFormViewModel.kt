@@ -24,6 +24,8 @@ class AttemptFormViewModel : ViewModel() {
 
     var processingStatus by mutableStateOf(false)
         private set
+    var analysisProgress by mutableStateOf<Int?>(null)
+        private set
     var errorMessage by mutableStateOf<String?>(null)
         private set
     var completedAttemptId by mutableStateOf<String?>(null)
@@ -45,6 +47,9 @@ class AttemptFormViewModel : ViewModel() {
             workManager.getWorkInfosForUniqueWorkFlow(AttemptProcessingWorker.WORK_NAME).collect { jobs ->
                 val work = jobs.firstOrNull { !it.state.isFinished } ?: jobs.firstOrNull() ?: return@collect
                 processingStatus = !work.state.isFinished
+                analysisProgress = if (work.state == WorkInfo.State.RUNNING) {
+                    work.progress.getInt(AttemptProcessingWorker.ANALYSIS_PROGRESS, -1).takeIf { it >= 0 }
+                } else null
                 when (work.state) {
                     WorkInfo.State.SUCCEEDED -> {
                         selectedVideo = null
@@ -64,6 +69,7 @@ class AttemptFormViewModel : ViewModel() {
         if (processingStatus) return
         val appContext = context.applicationContext
         processingStatus = true
+        analysisProgress = null
         errorMessage = null
         completedAttemptId = null
         viewModelScope.launch {

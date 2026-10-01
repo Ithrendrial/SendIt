@@ -24,18 +24,25 @@ class PoseExtractor internal constructor(
     data class VideoInput(val uri: String, val attemptId: String)
 
     internal interface VideoSession : Closeable {
+        val totalFrames: Int
+
         // Returns the next pose result, or null when the video has finished.
         fun next(): PoseLandmarkerResult?
     }
 
     // Extracts the video's poses in the background and links each frame to the attempt.
-    suspend fun extract(video: VideoInput): List<PoseFrame> = withContext(Dispatchers.Default) {
+    suspend fun extract(
+        video: VideoInput,
+        onProgress: suspend (Int) -> Unit = {}
+    ): List<PoseFrame> = withContext(Dispatchers.Default) {
         require(video.uri.isNotBlank()) { "A video URI is required" }
         require(video.attemptId.isNotBlank()) { "An attempt ID is required" }
         currentCoroutineContext().ensureActive()
         openVideo(video.uri).use { session ->
             val frames = mutableListOf<PoseFrame>()
             var previousTimestamp = -1L
+            var percentage = 0
+            onProgress(percentage)
             while (true) {
                 // Stops between frames if the processing job has been cancelled.
                 currentCoroutineContext().ensureActive()
@@ -53,7 +60,14 @@ class PoseExtractor internal constructor(
                     coordinates = readCoordinates(result)
                 )
                 previousTimestamp = timestamp
+                // Report whole percentages only, so WorkManager does not save an update for every frame.
+                val completed = (frames.size * 100L / session.totalFrames).toInt()
+                if (completed != percentage) {
+                    percentage = completed
+                    onProgress(percentage)
+                }
             }
+            if (percentage < 100) onProgress(100)
             frames
         }
     }
@@ -81,7 +95,7 @@ class PoseExtractor internal constructor(
     }
 
     companion object {
-        private const val MODEL_ASSET_PATH = "pose_landmarker_lite.task"
+        private const val MODEL_ASSET_PATH = "pose_landmarker_full.task"
         private const val CLIMBERS_PER_FRAME = 1
 
         // Creates the function that opens a real video session when extraction starts.

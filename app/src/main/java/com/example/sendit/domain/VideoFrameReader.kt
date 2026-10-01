@@ -22,6 +22,8 @@ internal class VideoFrameReader private constructor(
         override fun close() = bitmap.recycle()
     }
 
+    val totalFrames: Int get() = presentationTimesUs.size
+
     private var index = 0
 
     // Reads the next image at its video timestamp. Returns null at the end of the video.

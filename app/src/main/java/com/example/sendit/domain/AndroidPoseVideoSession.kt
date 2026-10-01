@@ -11,6 +11,8 @@ internal class AndroidPoseVideoSession private constructor(
     private val reader: VideoFrameReader,
     private val landmarker: PoseLandmarker
 ) : PoseExtractor.VideoSession {
+    override val totalFrames: Int get() = reader.totalFrames
+
     override fun next(): PoseLandmarkerResult? {
         val frame = reader.next() ?: return null
         frame.use {

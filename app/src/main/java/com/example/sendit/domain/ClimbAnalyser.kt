@@ -16,11 +16,13 @@ class ClimbAnalyser(
     private val repository: ClimbRepository
 ) {
     // Extracts and saves the reconstruction. Other analysis features will be added later.
-    suspend fun processAttempt(attemptId: String, routeId: String, video: Uri) {
+    suspend fun processAttempt(
+        attemptId: String, routeId: String, video: Uri, onProgress: suspend (Int) -> Unit = {}
+    ) {
         val attempt = requireNotNull(repository.getAttempt(attemptId))
         require(attempt.routeId == routeId)
         val aspectRatio = readAspectRatio(video)
-        val frames = extractor.extract(PoseExtractor.VideoInput(video.toString(), attemptId))
+        val frames = extractor.extract(PoseExtractor.VideoInput(video.toString(), attemptId), onProgress)
         repository.saveAnalysis(attemptId, frames, aspectRatio)
     }
 

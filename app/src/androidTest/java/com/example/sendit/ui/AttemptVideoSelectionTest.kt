@@ -50,7 +50,7 @@ class AttemptVideoSelectionTest {
             assertArrayEquals(arrayOf("video/*"), picker.launchedIntent?.getStringArrayExtra(Intent.EXTRA_MIME_TYPES))
             assertEquals(video, viewModel.selectedVideo)
         }
-        compose.onNodeWithText("Video selected").assertIsDisplayed()
+        compose.onNodeWithText("first.mp4").assertIsDisplayed()
         compose.onNodeWithText("Tap to choose a different video").assertIsDisplayed()
     }
 
@@ -73,10 +73,10 @@ class AttemptVideoSelectionTest {
         viewModel.selectVideo(original)
         showForm()
 
-        compose.onNodeWithText("Video selected").performScrollTo().performClick()
+        compose.onNodeWithText("first.mp4").performScrollTo().performClick()
 
         compose.runOnIdle { assertEquals(original, viewModel.selectedVideo) }
-        compose.onNodeWithText("Video selected").assertIsDisplayed()
+        compose.onNodeWithText("first.mp4").assertIsDisplayed()
     }
 
     // Checks that choosing a replacement through the screen forwards the new URI to the ViewModel.
@@ -88,7 +88,7 @@ class AttemptVideoSelectionTest {
         picker.result = replacement
         showForm()
 
-        compose.onNodeWithText("Video selected").performScrollTo().performClick()
+        compose.onNodeWithText("first.mp4").performScrollTo().performClick()
 
         compose.runOnIdle { assertEquals(replacement, viewModel.selectedVideo) }
     }
