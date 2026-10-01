@@ -18,6 +18,10 @@ interface AttemptDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertRoute(route: RouteEntity)
 
+    // Lists saved routes for the upload form's route picker.
+    @Query("SELECT * FROM routes ORDER BY name")
+    fun observeRoutes(): Flow<List<RouteEntity>>
+
     // Watches the saved attempt and frames for the detail page.
     @Transaction
     @Query("SELECT * FROM attempts WHERE id = :id")
@@ -34,6 +38,14 @@ interface AttemptDao {
     // Replaces only this attempt's frames when processing is repeated.
     @Query("DELETE FROM pose_frames WHERE attemptId = :attemptId")
     suspend fun deleteFrames(attemptId: String)
+
+    // Removes an unfinished attempt; its pose frames go with it.
+    @Query("DELETE FROM attempts WHERE id = :id")
+    suspend fun deleteAttempt(id: String)
+
+    // Removes a route only when none of its attempts remain.
+    @Query("DELETE FROM routes WHERE id = :routeId AND NOT EXISTS (SELECT 1 FROM attempts WHERE routeId = :routeId)")
+    suspend fun deleteRouteIfUnused(routeId: String)
 
     // Marks the result ready in the same transaction as its pose frames.
     @Query("UPDATE attempts SET processingStatus = 0, videoAspectRatio = :aspectRatio WHERE id = :id")

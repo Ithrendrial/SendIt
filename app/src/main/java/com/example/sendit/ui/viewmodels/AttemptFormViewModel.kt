@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 // ViewModel that holds UI state for the attempt form. When the vaulues change, the UI is recomposed automatically.
 class AttemptFormViewModel : ViewModel() {
     private var processingObserver: Job? = null
+    private var cancelRequested = false
 
     var processingStatus by mutableStateOf(false)
         private set
@@ -56,7 +57,11 @@ class AttemptFormViewModel : ViewModel() {
                         completedAttemptId = work.id.toString()
                     }
                     WorkInfo.State.FAILED -> errorMessage = "Video processing failed. Please select the video again."
-                    WorkInfo.State.CANCELLED -> errorMessage = "Processing was cancelled. Please try again."
+                    WorkInfo.State.CANCELLED -> {
+                        // Cancelling from the form is not an error; only unexpected cancellations are reported.
+                        if (cancelRequested) cancelRequested = false
+                        else errorMessage = "Processing was cancelled. Please try again."
+                    }
                     else -> Unit
                 }
             }
@@ -90,6 +95,12 @@ class AttemptFormViewModel : ViewModel() {
                 errorMessage = "Could not queue this video. Please select it again, or shorten the notes and retry."
             }
         }
+    }
+
+    // Stops the queued upload; the worker discards the unfinished attempt, and the form keeps its values.
+    fun cancelProcessing(context: Context) {
+        cancelRequested = true
+        WorkManager.getInstance(context.applicationContext).cancelUniqueWork(AttemptProcessingWorker.WORK_NAME)
     }
 
     // Returns to the form without deleting the saved attempt.

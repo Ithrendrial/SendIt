@@ -11,7 +11,10 @@ import java.time.format.DateTimeFormatter
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -61,6 +64,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.sendit.R
+import com.example.sendit.data.RouteEntity
 import com.example.sendit.domain.AttemptDetails
 import com.example.sendit.ui.theme.SendItSpacing
 import com.example.sendit.ui.theme.SendItTheme
@@ -76,7 +80,9 @@ fun AttemptFormScreen(
     processing: Boolean = false,
     analysisProgress: Int? = null,
     errorMessage: String? = null,
-    onSubmit: (AttemptDetails) -> Unit = {}
+    existingRoutes: List<RouteEntity> = emptyList(),
+    onSubmit: (AttemptDetails) -> Unit = {},
+    onCancel: () -> Unit = {}
 ) {
     // Register once with Compose. The picker grants access to the document the user chooses.
     // Null = cancellation, in which case keep previous selection.
@@ -88,11 +94,18 @@ fun AttemptFormScreen(
     // Changing these values in the State will cause Compose to redraw the UI.
     // rememberSaveable stores this info and persists it across config changes, but isn't stored in the Room.
     var routeName by rememberSaveable { mutableStateOf("") }
+    var selectedRouteId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showNewRouteDialog by rememberSaveable { mutableStateOf(false) }
     var grade by rememberSaveable { mutableStateOf("VB") }
     var location by rememberSaveable { mutableStateOf("") }
     var notes by rememberSaveable { mutableStateOf("") }
     var outcome by rememberSaveable { mutableStateOf("Fall") }
     var date by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
+
+    // An existing route supplies its own name, grade and location; otherwise routeName holds a new route's name.
+    val selectedRoute = existingRoutes.firstOrNull { it.id == selectedRouteId }
+    val hasRoute = selectedRoute != null || routeName.isNotBlank()
+    val formEnabled = !processing // The form is locked while an upload is being processed.
 
     val context = LocalContext.current // Needed for the date picker dialogue
     val focusManager = LocalFocusManager.current
@@ -109,6 +122,13 @@ fun AttemptFormScreen(
         }
     }
 
+    if (showNewRouteDialog) {
+        NewRouteDialog(
+            onAdd = { name -> selectedRouteId = null; routeName = name; showNewRouteDialog = false },
+            onDismiss = { showNewRouteDialog = false }
+        )
+    }
+
     // Column layout places children vertically and incorperates scrolling.
     Column(
         modifier = modifier
@@ -123,12 +143,12 @@ fun AttemptFormScreen(
         Spacer(Modifier.height(SendItSpacing.section))
         SectionLabel(stringResource(R.string.route_details)) // Route details heading
         Spacer(Modifier.height(SendItSpacing.extraSmall))
-        EditableField( // Route name text input with label and placeholder.
-            stringResource(R.string.route_name),
-            routeName,
-            { routeName = it },
-            routeLabel = true,
-            placeholder = stringResource(R.string.route_name_placeholder)
+        RouteDropdown(
+            routes = existingRoutes,
+            selectedName = selectedRoute?.name ?: routeName.ifBlank { null },
+            enabled = formEnabled,
+            onRouteSelected = { selectedRouteId = it.id; routeName = "" },
+            onNewRoute = { showNewRouteDialog = true }
         )
         Spacer(Modifier.height(SendItSpacing.large))
         
@@ -144,15 +164,18 @@ fun AttemptFormScreen(
         Spacer(Modifier.height(SendItSpacing.extraLarge))
 
         // Further attempt details (grade, location, date, outcome, notes).
-        GradeDropdown(grade) { grade = it } // Grade dropdown picker
-        Spacer(Modifier.height(SendItSpacing.large))
-        EditableField( // Location text field
-            stringResource(R.string.location), 
-            location, 
-            { location = it }, 
-            routeLabel = true, 
-            placeholder = stringResource(R.string.location_placeholder)
-        )
+        if (selectedRoute == null) {
+            GradeDropdown(grade, formEnabled) { grade = it } // Grade dropdown picker
+            Spacer(Modifier.height(SendItSpacing.large))
+            EditableField( // Location text field
+                stringResource(R.string.location), 
+                location, 
+                { location = it }, 
+                routeLabel = true, 
+                placeholder = stringResource(R.string.location_placeholder),
+                enabled = formEnabled
+            )
+        }
         Spacer(Modifier.height(SendItSpacing.extraLarge))
         // Tapping the date opens the native Android calendar dialog.
         SectionLabel(stringResource(R.string.date)) // Date label
@@ -169,6 +192,7 @@ fun AttemptFormScreen(
                     selectedDate.year, selectedDate.monthValue - 1, selectedDate.dayOfMonth
                 ).show()
             },
+            enabled = formEnabled,
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surfaceContainerLow
@@ -184,9 +208,9 @@ fun AttemptFormScreen(
         Spacer(Modifier.height(SendItSpacing.extraSmall))
         // Outcome options (only one can be selected at a time), arranged in a row.
         Row(modifier = Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(SendItSpacing.small)) {
-            OutcomeOption(stringResource(R.string.sent), selected = outcome == "Sent", onClick = { outcome = "Sent" }, modifier = Modifier.weight(1f))
-            OutcomeOption(stringResource(R.string.fall), selected = outcome == "Fall", onClick = { outcome = "Fall" }, modifier = Modifier.weight(1f))
-            OutcomeOption(stringResource(R.string.flash), selected = outcome == "Flash", onClick = { outcome = "Flash" }, modifier = Modifier.weight(1f))
+            OutcomeOption(stringResource(R.string.sent), selected = outcome == "Sent", onClick = { outcome = "Sent" }, enabled = formEnabled, modifier = Modifier.weight(1f))
+            OutcomeOption(stringResource(R.string.fall), selected = outcome == "Fall", onClick = { outcome = "Fall" }, enabled = formEnabled, modifier = Modifier.weight(1f))
+            OutcomeOption(stringResource(R.string.flash), selected = outcome == "Flash", onClick = { outcome = "Flash" }, enabled = formEnabled, modifier = Modifier.weight(1f))
         }
         Spacer(Modifier.height(SendItSpacing.extraLarge))
 
@@ -195,7 +219,8 @@ fun AttemptFormScreen(
             value = notes,
             onValueChange = { notes = it },
             placeholder = stringResource(R.string.notes_placeholder),
-            multiline = true
+            multiline = true,
+            enabled = formEnabled
         )
         Spacer(Modifier.height(40.dp))
         if (errorMessage != null) {
@@ -220,29 +245,50 @@ fun AttemptFormScreen(
             }
             Spacer(Modifier.height(SendItSpacing.medium))
         }
-        Surface( // Form submission (upload and analysis button).
-            onClick = {
-                focusManager.clearFocus()
-                onSubmit(AttemptDetails(
-                    routeName, grade, location,
-                    LocalDate.parse(date).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-                    outcome, notes
-                ))
-            },
-            enabled = selectedVideo != null && !processing,
+        // Cancel only appears once the form has been submitted, and returns the form to an editable state.
+        Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = SendItSpacing.section),
-            shape = MaterialTheme.shapes.small,
-            color = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary
+            horizontalArrangement = Arrangement.spacedBy(SendItSpacing.small)
         ) {
-            Box(
-                modifier = Modifier.heightIn(min = 48.dp).padding(SendItSpacing.medium),
-                contentAlignment = Alignment.Center
+            Surface( // Form submission (upload and analysis button).
+                onClick = {
+                    focusManager.clearFocus()
+                    onSubmit(AttemptDetails(
+                        selectedRoute?.name ?: routeName, selectedRoute?.grade ?: grade, selectedRoute?.location ?: location,
+                        LocalDate.parse(date).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                        outcome, notes, selectedRoute?.id
+                    ))
+                },
+                enabled = selectedVideo != null && hasRoute && !processing, // Video and route are required.
+                modifier = Modifier.weight(1f),
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
-                Text(
-                    if (processing) "Processing video…" else stringResource(R.string.upload_and_analyse),
-                    style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center
-                )
+                Box(
+                    modifier = Modifier.heightIn(min = 48.dp).padding(SendItSpacing.medium),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (processing) "Processing video…" else stringResource(R.string.upload_and_analyse),
+                        style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center
+                    )
+                }
+            }
+            if (processing) {
+                Surface(
+                    onClick = onCancel,
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    contentColor = MaterialTheme.colorScheme.secondary
+                ) {
+                    Box(
+                        modifier = Modifier.heightIn(min = 48.dp).padding(SendItSpacing.medium),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(stringResource(R.string.cancel), style = MaterialTheme.typography.labelLarge)
+                    }
+                }
             }
         }
     }
@@ -264,13 +310,15 @@ private fun EditableField(
     onValueChange: (String) -> Unit,
     routeLabel: Boolean = false,
     placeholder: String = "",
-    multiline: Boolean = false
+    multiline: Boolean = false,
+    enabled: Boolean = true
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(SendItSpacing.extraSmall)) {
         FieldLabel(label, routeLabel)
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
+            enabled = enabled,
             singleLine = !multiline,
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.secondary),
@@ -302,9 +350,79 @@ private fun FieldLabel(label: String, routeLabel: Boolean) {
     )
 }
 
+// Dropdown of saved routes, with "+ New Route" last. The parent owns the selection.
+@Composable
+private fun RouteDropdown(
+    routes: List<RouteEntity>,
+    selectedName: String?,
+    enabled: Boolean,
+    onRouteSelected: (RouteEntity) -> Unit,
+    onNewRoute: () -> Unit
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    val selectorDescription = stringResource(R.string.route_selector)
+    Column(verticalArrangement = Arrangement.spacedBy(SendItSpacing.extraSmall)) {
+        FieldLabel(stringResource(R.string.route_name), routeLabel = true)
+        Box {
+            Surface(
+                onClick = { focusManager.clearFocus(); expanded = true },
+                enabled = enabled,
+                modifier = Modifier.semantics { contentDescription = selectorDescription },
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceContainerLow
+            ) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(SendItSpacing.large),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(selectedName ?: stringResource(R.string.select_route), modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyLarge)
+                    Icon(painterResource(R.drawable.ic_chevron_down), contentDescription = null,
+                        modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 280.dp)) {
+                routes.forEach { route ->
+                    DropdownMenuItem(
+                        text = { Text(route.name) },
+                        onClick = { onRouteSelected(route); expanded = false }
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.new_route_option)) },
+                    onClick = { onNewRoute(); expanded = false }
+                )
+            }
+        }
+    }
+}
+
+// Modal for typing the name of a new route. Add stays disabled until a name is entered.
+@Composable
+private fun NewRouteDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
+    var name by rememberSaveable { mutableStateOf("") }
+    val nameDescription = stringResource(R.string.new_route_name)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.new_route)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                singleLine = true,
+                placeholder = { Text(stringResource(R.string.route_name_placeholder)) },
+                modifier = Modifier.semantics { contentDescription = nameDescription }
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onAdd(name.trim()) }, enabled = name.isNotBlank()) { Text(stringResource(R.string.add)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+    )
+}
+
 // Dropdown menu for grade route selection. Final selected output is owned by parent.
 @Composable
-private fun GradeDropdown(grade: String, onGradeChange: (String) -> Unit) {
+private fun GradeDropdown(grade: String, enabled: Boolean, onGradeChange: (String) -> Unit) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     Column(verticalArrangement = Arrangement.spacedBy(SendItSpacing.extraSmall)) {
@@ -312,6 +430,7 @@ private fun GradeDropdown(grade: String, onGradeChange: (String) -> Unit) {
         Box {
             Surface(
                 onClick = { focusManager.clearFocus(); expanded = true },
+                enabled = enabled,
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
@@ -395,10 +514,11 @@ private fun VideoPlaceholder(videoName: String?, onClick: () -> Unit) {
 
 // Selectable outcome tiles (Sent, Fall, Flash).
 @Composable
-private fun OutcomeOption(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun OutcomeOption(text: String, selected: Boolean, onClick: () -> Unit, enabled: Boolean, modifier: Modifier = Modifier) {
     Surface(
         selected = selected,
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier,
         shape = MaterialTheme.shapes.small,
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLow,

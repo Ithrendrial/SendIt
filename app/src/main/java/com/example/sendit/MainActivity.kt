@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -60,6 +62,7 @@ private fun SendItApp(form: AttemptFormViewModel, repository: ClimbRepository, m
     val context = LocalContext.current
     val attemptId = form.completedAttemptId
     if (attemptId == null) {
+        val routes by repository.observeRoutes().collectAsState(initial = emptyList())
         AttemptFormScreen(
             modifier = modifier,
             selectedVideo = form.selectedVideo,
@@ -67,7 +70,9 @@ private fun SendItApp(form: AttemptFormViewModel, repository: ClimbRepository, m
             processing = form.processingStatus,
             analysisProgress = form.analysisProgress,
             errorMessage = form.errorMessage,
-            onSubmit = { form.submitAttempt(context, it) }
+            existingRoutes = routes,
+            onSubmit = { form.submitAttempt(context, it) },
+            onCancel = { form.cancelProcessing(context) }
         )
     } else {
         val detail = viewModel<AttemptDetailViewModel>(key = attemptId, factory = viewModelFactory {

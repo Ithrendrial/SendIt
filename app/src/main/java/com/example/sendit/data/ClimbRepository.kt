@@ -9,6 +9,9 @@ class ClimbRepository(private val database: AppDatabase) {
     // Observes saved data so playback uses the database as its source of truth.
     fun observeAttempt(id: String) = dao.observeAttempt(id)
 
+    // Observes saved routes so the form can offer them for new attempts.
+    fun observeRoutes() = dao.observeRoutes()
+
     // Reads an existing attempt when a worker resumes after interruption.
     suspend fun getAttempt(id: String) = dao.getById(id)
 
@@ -23,6 +26,14 @@ class ClimbRepository(private val database: AppDatabase) {
         dao.deleteFrames(attemptId)
         dao.insertFrames(frames)
         dao.complete(attemptId, aspectRatio)
+    }
+
+    // Discards a cancelled upload, and its route if that route has no other attempts.
+    suspend fun discardAttempt(attemptId: String) = database.withTransaction {
+        val routeId = dao.getById(attemptId)?.routeId ?: return@withTransaction
+        dao.deleteFrames(attemptId)
+        dao.deleteAttempt(attemptId)
+        dao.deleteRouteIfUnused(routeId)
     }
 
     // Clears the processing flag when extraction fails.
