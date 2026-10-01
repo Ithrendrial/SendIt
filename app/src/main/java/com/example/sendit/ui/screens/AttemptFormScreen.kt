@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.selection.selectableGroup
@@ -55,6 +56,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.sendit.R
+import com.example.sendit.domain.AttemptDetails
 import com.example.sendit.ui.theme.SendItSpacing
 import com.example.sendit.ui.theme.SendItTheme
 
@@ -65,7 +67,10 @@ private const val VIDEO_MIME_TYPE = "video/*"
 fun AttemptFormScreen(
     modifier: Modifier = Modifier,
     selectedVideo: Uri?,
-    onVideoSelected: (Uri) -> Unit
+    onVideoSelected: (Uri) -> Unit,
+    processing: Boolean = false,
+    errorMessage: String? = null,
+    onSubmit: (AttemptDetails) -> Unit = {}
 ) {
     // Register once with Compose. The picker grants access to the document the user chooses.
     // Null = cancellation, in which case keep previous selection.
@@ -113,8 +118,10 @@ fun AttemptFormScreen(
         SectionLabel(stringResource(R.string.attempt_video)) // Video section heading
         Spacer(Modifier.height(SendItSpacing.extraSmall))
         VideoPlaceholder(hasSelectedVideo = selectedVideo != null) {
-            focusManager.clearFocus()
-            videoPicker.launch(arrayOf(VIDEO_MIME_TYPE))
+            if (!processing) {
+                focusManager.clearFocus()
+                videoPicker.launch(arrayOf(VIDEO_MIME_TYPE))
+            }
         }
         Spacer(Modifier.height(SendItSpacing.extraLarge))
 
@@ -173,10 +180,20 @@ fun AttemptFormScreen(
             multiline = true
         )
         Spacer(Modifier.height(40.dp))
+        if (errorMessage != null) {
+            Text(errorMessage, color = MaterialTheme.colorScheme.error)
+            Spacer(Modifier.height(SendItSpacing.medium))
+        }
         Surface( // Form submission (upload and analysis button).
             onClick = {
                 focusManager.clearFocus()
+                onSubmit(AttemptDetails(
+                    routeName, grade, location,
+                    LocalDate.parse(date).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                    outcome, notes
+                ))
             },
+            enabled = selectedVideo != null && !processing,
             modifier = Modifier.fillMaxWidth().padding(horizontal = SendItSpacing.section),
             shape = MaterialTheme.shapes.small,
             color = MaterialTheme.colorScheme.primary,
@@ -186,7 +203,10 @@ fun AttemptFormScreen(
                 modifier = Modifier.heightIn(min = 48.dp).padding(SendItSpacing.medium),
                 contentAlignment = Alignment.Center
             ) {
-                Text(stringResource(R.string.upload_and_analyse), style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+                Text(
+                    if (processing) "Processing video…" else stringResource(R.string.upload_and_analyse),
+                    style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center
+                )
             }
         }
     }
