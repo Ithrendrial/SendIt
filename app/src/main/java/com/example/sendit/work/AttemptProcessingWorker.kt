@@ -12,6 +12,8 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.example.sendit.SendItApplication
@@ -25,6 +27,8 @@ import java.io.IOException
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 // Reads the selected video URI and form details from selected job. job Id becomes the attempt Id. 
@@ -59,7 +63,15 @@ class AttemptProcessingWorker(context: Context, parameters: WorkerParameters) : 
             finished = true
             Result.success()
         } catch (cancelled: CancellationException) {
-            // Keep URI access so WorkManager can retry after a system interruption.
+            // Cancelled by the user (state is CANCELLED already): discard the unfinished attempt.
+            // A system interruption leaves the state alone, so keep URI access for WorkManager's retry.
+            withContext(NonCancellable) {
+                val state = WorkManager.getInstance(applicationContext).getWorkInfoByIdFlow(id).first()?.state
+                if (state == WorkInfo.State.CANCELLED) {
+                    repository.discardAttempt(attemptId)
+                    finished = true
+                }
+            }
             throw cancelled
         } catch (failure: Exception) {
             Log.e("AttemptProcessing", "Could not process attempt $attemptId", failure)
@@ -118,7 +130,7 @@ class AttemptProcessingWorker(context: Context, parameters: WorkerParameters) : 
         // Captures the form values so later edits cannot change an already queued attempt.
         fun request(video: Uri, details: AttemptDetails) = OneTimeWorkRequestBuilder<AttemptProcessingWorker>()
             .setInputData(workDataOf(
-                VIDEO_URI to video.toString(), ROUTE_ID to UUID.randomUUID().toString(),
+                VIDEO_URI to video.toString(), ROUTE_ID to (details.routeId ?: UUID.randomUUID().toString()),
                 "routeName" to details.routeName, "grade" to details.grade, "location" to details.location,
                 "recordedAt" to details.recordedAt, "outcome" to details.outcome, "notes" to details.notes
             ))
