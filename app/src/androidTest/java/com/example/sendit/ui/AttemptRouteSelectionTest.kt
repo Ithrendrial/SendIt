@@ -21,7 +21,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-// Checks the route name is picked from the saved routes, with an option to create a new one.
+// Checks the route is picked from the saved routes, with a "+ New Route" option that opens a modal.
 @RunWith(AndroidJUnit4::class)
 class AttemptRouteSelectionTest {
     @get:Rule
@@ -31,9 +31,9 @@ class AttemptRouteSelectionTest {
     private val slab = RouteEntity("route-2", "Grey Slab", "V2", "Southern Quarry")
     private var submitted: AttemptDetails? = null
 
-    // Checks the menu lists every saved route, then the create option last.
+    // Checks the menu lists every saved route, then the new route option last.
     @Test
-    fun routeMenuListsExistingRoutesThenCreateNewRoute() {
+    fun routeMenuListsExistingRoutesThenNewRouteOption() {
         showForm(listOf(overhang, slab))
 
         openRouteMenu()
@@ -41,7 +41,7 @@ class AttemptRouteSelectionTest {
         compose.onNodeWithText("Orange Overhang").assertIsDisplayed()
         compose.onNodeWithText("Grey Slab").assertIsDisplayed()
         val lastRouteBottom = compose.onNodeWithText("Grey Slab").fetchSemanticsNode().boundsInRoot.bottom
-        val createTop = compose.onNodeWithText("Create new route").fetchSemanticsNode().boundsInRoot.top
+        val createTop = compose.onNodeWithText("+ New Route").fetchSemanticsNode().boundsInRoot.top
         assertTrue(createTop >= lastRouteBottom)
     }
 
@@ -60,27 +60,49 @@ class AttemptRouteSelectionTest {
         assertEquals("Grey Slab", submitted?.routeName)
     }
 
-    // Checks creating a new route opens a name field, and the submitted attempt has no existing route id.
+    // Checks "+ New Route" opens a modal name field, and adding the name selects it as a new route.
     @Test
-    fun createNewRouteOpensNameFieldAndSubmitsTypedName() {
+    fun newRouteOpensModalAndSubmitsTypedName() {
         showForm(listOf(overhang))
 
         openRouteMenu()
-        compose.onNodeWithText("Create new route").performClick()
-        compose.onNodeWithContentDescription("Route Name").performTextInput("Purple Arete")
+        compose.onNodeWithText("+ New Route").performClick()
+        compose.onNodeWithContentDescription("New route name").performTextInput("Purple Arete")
+        compose.onNodeWithText("Add").performClick()
 
+        compose.onNodeWithContentDescription("New route name").assertDoesNotExist()
+        compose.onNodeWithText("Purple Arete").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Location").assertExists()
         submit()
         assertNull(submitted?.routeId)
         assertEquals("Purple Arete", submitted?.routeName)
-        compose.onNodeWithContentDescription("Location").assertExists()
     }
 
-    // Checks the first route ever entered does not need an extra tap, because there is nothing to pick from.
+    // Checks cancelling the modal leaves the route choice as it was.
     @Test
-    fun withNoSavedRoutesTheNameFieldIsShownImmediately() {
+    fun cancellingNewRouteModalKeepsPreviousChoice() {
+        showForm(listOf(overhang, slab))
+        openRouteMenu()
+        compose.onNodeWithText("Grey Slab").performClick()
+
+        openRouteMenu()
+        compose.onNodeWithText("+ New Route").performClick()
+        compose.onNodeWithContentDescription("New route name").performTextInput("Ignored")
+        compose.onNodeWithText("Cancel").performClick()
+
+        compose.onNodeWithContentDescription("New route name").assertDoesNotExist()
+        submit()
+        assertEquals("route-2", submitted?.routeId)
+    }
+
+    // Checks the first route ever entered still goes through the menu, which then holds only "+ New Route".
+    @Test
+    fun withNoSavedRoutesTheMenuOffersOnlyNewRoute() {
         showForm(emptyList())
 
-        compose.onNodeWithContentDescription("Route Name").assertIsDisplayed()
+        openRouteMenu()
+
+        compose.onNodeWithText("+ New Route").assertIsDisplayed()
     }
 
     private fun openRouteMenu() {
