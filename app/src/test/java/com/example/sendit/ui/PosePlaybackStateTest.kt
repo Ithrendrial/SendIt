@@ -42,6 +42,32 @@ class PosePlaybackStateTest {
         assertEquals(900L, playback.positionMs)
     }
 
+    // Checks the user dragging the scrub bar pauses playback, so the clock does not fight the drag.
+    @Test
+    fun scrubbingWhilePlayingPausesAtTheSelectedTime() {
+        val playback = PosePlaybackState(frames)
+        playback.togglePlayback()
+
+        playback.scrubTo(1000)
+        assertFalse(playback.isPlaying)
+        assertEquals(1000L, playback.positionMs)
+        assertSame(frames[1], playback.currentFrame)
+
+        playback.advanceBy(500)
+        assertEquals(1000L, playback.positionMs)
+    }
+
+    // Checks scrubbing does not start playback by itself.
+    @Test
+    fun scrubbingWhilePausedStaysPaused() {
+        val playback = PosePlaybackState(frames)
+
+        playback.scrubTo(1000)
+
+        assertFalse(playback.isPlaying)
+        assertEquals(1000L, playback.positionMs)
+    }
+
     // Makes a pose with the same coordinate layout as the extractor, without running MediaPipe.
     private fun frame(index: Int, timestamp: Long) = PoseFrame(
         id = "frame-$index",

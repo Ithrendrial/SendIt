@@ -18,7 +18,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -26,6 +25,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.sendit.data.ClimbRepository
 import com.example.sendit.ui.screens.AttemptDetailScreen
+import com.example.sendit.ui.screens.AttemptHeading
+import com.example.sendit.ui.screens.BackButton
 import com.example.sendit.ui.screens.AttemptFormScreen
 import com.example.sendit.ui.viewmodels.AttemptDetailViewModel
 
@@ -74,11 +75,25 @@ private fun SendItApp(form: AttemptFormViewModel, repository: ClimbRepository, m
         })
         BackHandler(onBack = form::dismissResult)
         Column(modifier) {
-            TextButton(onClick = form::dismissResult) { Text("Back to upload") }
             when {
-                detail.isLoading -> CircularProgressIndicator()
-                detail.errorMessage != null -> Text(detail.errorMessage!!)
-                else -> AttemptDetailScreen(detail.poseFrames, detail.selectedAttempt!!.videoAspectRatio!!)
+                detail.isLoading -> {
+                    BackButton(form::dismissResult)
+                    CircularProgressIndicator()
+                }
+                detail.errorMessage != null -> {
+                    BackButton(form::dismissResult)
+                    Text(detail.errorMessage!!)
+                }
+                else -> {
+                    val attempt = detail.selectedAttempt!!
+                    val route = detail.route!!
+                    AttemptDetailScreen(
+                        poseFrames = detail.poseFrames,
+                        videoAspectRatio = attempt.videoAspectRatio!!,
+                        heading = AttemptHeading(route.name, route.location, route.grade, attempt.outcome),
+                        onBack = form::dismissResult
+                    )
+                }
             }
         }
     }

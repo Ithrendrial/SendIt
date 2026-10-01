@@ -15,7 +15,8 @@ import kotlinx.coroutines.ensureActive
 /** Reads frames without assuming a fixed frame rate. */
 internal class VideoFrameReader private constructor(
     private val retriever: MediaMetadataRetriever,
-    private val presentationTimesUs: List<Long>
+    private val presentationTimesUs: List<Long>,
+    private val useFrameIndices: Boolean
 ) : Closeable {
     class Frame(val timestampMs: Long, val bitmap: Bitmap) : Closeable {
         // Frees the frame's image memory once it is no longer needed.
@@ -29,19 +30,36 @@ internal class VideoFrameReader private constructor(
     // Reads the next image at its video timestamp. Returns null at the end of the video.
     fun next(): Frame? {
         if (index == presentationTimesUs.size) return null
-        val timeUs = presentationTimesUs[index++]
-        // Android applies the video's display rotation here.
-        val decoded = retriever.getScaledFrameAtTime(
-            timeUs, MediaMetadataRetriever.OPTION_CLOSEST,
-            MAX_FRAME_DIMENSION_PX, MAX_FRAME_DIMENSION_PX
-        ) ?: throw IOException("Cannot decode video frame at ${timeUs / MICROSECONDS_PER_MILLISECOND} ms")
-        // MediaPipe needs ARGB pixels, so convert the image only if needed.
-        val bitmap = if (decoded.config == Bitmap.Config.ARGB_8888) decoded else {
+        val frameIndex = index++
+        val timeUs = presentationTimesUs[frameIndex]
+        // Reading consecutive indices lets Android reuse its decoder. Both methods apply rotation.
+        val decoded = (if (useFrameIndices) {
+            retriever.getFrameAtIndex(frameIndex)
+        } else {
+            retriever.getScaledFrameAtTime(
+                timeUs, MediaMetadataRetriever.OPTION_CLOSEST,
+                MAX_FRAME_DIMENSION_PX, MAX_FRAME_DIMENSION_PX
+            )
+        }) ?: throw IOException("Cannot decode video frame at ${timeUs / MICROSECONDS_PER_MILLISECOND} ms")
+        // Indexed frames are full size, so shrink each one before passing it to MediaPipe.
+        val scale = MAX_FRAME_DIMENSION_PX.toFloat() / maxOf(decoded.width, decoded.height)
+        val scaled = if (scale >= 1f) decoded else {
             try {
-                decoded.copy(Bitmap.Config.ARGB_8888, false)
-                    ?: throw IOException("Cannot convert video frame to ARGB")
+                Bitmap.createScaledBitmap(
+                    decoded, (decoded.width * scale).toInt().coerceAtLeast(1),
+                    (decoded.height * scale).toInt().coerceAtLeast(1), true
+                )
             } finally {
                 decoded.recycle()
+            }
+        }
+        // MediaPipe needs ARGB pixels, so convert the image only if needed.
+        val bitmap = if (scaled.config == Bitmap.Config.ARGB_8888) scaled else {
+            try {
+                scaled.copy(Bitmap.Config.ARGB_8888, false)
+                    ?: throw IOException("Cannot convert video frame to ARGB")
+            } finally {
+                scaled.recycle()
             }
         }
         // Android reads in microseconds and our pose frames store milliseconds, so convert.
@@ -65,7 +83,10 @@ internal class VideoFrameReader private constructor(
                 val timestamps = readPresentationTimes(context, uri)
                 currentCoroutineContext().ensureActive()
                 retriever.setDataSource(context, uri)
-                return VideoFrameReader(retriever, timestamps)
+                // Fall back to timestamp reads if frame indices cannot match our filtered timestamps.
+                val frameCount = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)
+                    ?.toIntOrNull()
+                return VideoFrameReader(retriever, timestamps, useFrameIndices = frameCount == timestamps.size)
             } catch (failure: Exception) {
                 try {
                     retriever.release()

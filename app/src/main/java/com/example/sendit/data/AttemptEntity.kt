@@ -29,8 +29,9 @@ data class AttemptEntity(
     val videoAspectRatio: Float? = null
 )
 
-// Loads the attempt and its poses together for playback.
+// Loads the attempt, its poses, and its route together for playback and the page heading.
 data class AttemptWithFrames(
     @Embedded val attempt: AttemptEntity,
-    @Relation(parentColumn = "id", entityColumn = "attemptId") val frames: List<PoseFrame>
+    @Relation(parentColumn = "id", entityColumn = "attemptId") val frames: List<PoseFrame>,
+    @Relation(parentColumn = "routeId", entityColumn = "id") val route: RouteEntity
 )

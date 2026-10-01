@@ -7,12 +7,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.sendit.data.AttemptEntity
 import com.example.sendit.data.ClimbRepository
+import com.example.sendit.data.RouteEntity
 import com.example.sendit.domain.PoseFrame
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 class AttemptDetailViewModel(repository: ClimbRepository, attemptId: String) : ViewModel() {
     var selectedAttempt by mutableStateOf<AttemptEntity?>(null)
+        private set
+    var route by mutableStateOf<RouteEntity?>(null)
         private set
     var poseFrames by mutableStateOf<List<PoseFrame>>(emptyList())
         private set
@@ -31,6 +34,7 @@ class AttemptDetailViewModel(repository: ClimbRepository, attemptId: String) : V
                 }
                 .collect { saved ->
                     selectedAttempt = saved?.attempt
+                    route = saved?.route
                     poseFrames = saved?.frames.orEmpty().sortedBy { it.frameIndex }
                     errorMessage = if (saved?.attempt?.videoAspectRatio == null) "This attempt has no saved reconstruction." else null
                     isLoading = false
