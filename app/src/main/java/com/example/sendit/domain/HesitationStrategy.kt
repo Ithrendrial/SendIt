@@ -4,8 +4,7 @@ import java.util.UUID
 import kotlin.math.hypot
 
 class HesitationStrategy : ClassificationStrategy {
-    // Finds likely exploration without attempt progression. Just a motionless pause alone is not enough to 
-    // classify as hesitation.
+    // Looks for exploration without sustained pelvis displacement, rather than requiring still hips in every frame.
     override fun classify(frames: List<PoseFrame>, aspectRatio: Float): List<Finding> {
         require(aspectRatio.isFinite() && aspectRatio > 0f) { "Aspect ratio must be positive and finite" }
         if (frames.size < 2) return emptyList()
@@ -32,13 +31,23 @@ class HesitationStrategy : ClassificationStrategy {
             start = -1
         }
 
+        var windowStart = 0
+        var windowEnd = 0
         for (index in 1 until frames.size) {
             val previous = frames[index - 1]
             val current = frames[index]
-            val seconds = (current.timestamp - previous.timestamp) / MILLIS_PER_SECOND
+            // Centre the observation window on the pair, shifting it inside the clip at either end.
+            val centre = previous.timestamp + (current.timestamp - previous.timestamp) / 2
+            val startTime = (centre - OBSERVATION_WINDOW_MS / 2).coerceIn(
+                frames.first().timestamp,
+                maxOf(frames.first().timestamp, frames.last().timestamp - OBSERVATION_WINDOW_MS)
+            )
+            while (windowStart + 1 < frames.size && frames[windowStart + 1].timestamp <= startTime) windowStart++
+            while (windowEnd + 1 < frames.size && frames[windowEnd + 1].timestamp <= startTime + OBSERVATION_WINDOW_MS) windowEnd++
             val continuous = current.attemptId == previous.attemptId &&
-                current.frameIndex == previous.frameIndex + 1
-            if (continuous && isExploring(measurements[index - 1], measurements[index], seconds, scale)) {
+                current.frameIndex == previous.frameIndex + 1 && current.timestamp > previous.timestamp
+            val pairInWindow = index - 1 >= windowStart && index <= windowEnd
+            if (continuous && pairInWindow && isExploring(frames, measurements, windowStart, windowEnd, scale)) {
                 if (start < 0) start = index - 1
             } else {
                 finish(index - 1)
@@ -48,15 +57,38 @@ class HesitationStrategy : ClassificationStrategy {
         return findings
     }
 
-    private fun isExploring(previous: Measurements?, current: Measurements?, seconds: Float, scale: Float): Boolean {
-        if (previous == null || current == null || seconds <= 0f) return false
-        val pelvisSpeed = distance(previous.pelvis, current.pelvis) / scale / seconds
+    private fun isExploring(
+        frames: List<PoseFrame>, measurements: List<Measurements?>, start: Int, end: Int, scale: Float
+    ): Boolean {
+        val first = measurements[start] ?: return false
+        val last = measurements[end] ?: return false
+        val seconds = (frames[end].timestamp - frames[start].timestamp) / MILLIS_PER_SECOND
+        if (seconds <= 0f) return false
+        val pelvisSpeed = distance(first.pelvis, last.pelvis) / scale / seconds
         if (pelvisSpeed >= MAX_PELVIS_SPEED) return false
-        return LIMB_LANDMARKS.indices.any { index ->
-            val before = previous.limbs[index]
-            val after = current.limbs[index]
-            before != null && after != null && distance(before, after) / scale / seconds >= MIN_LIMB_SPEED
+
+        val anchors = arrayOfNulls<Point>(LIMB_LANDMARKS.size)
+        var largestExcursion = 0f
+        for (index in start + 1..end) {
+            val previous = measurements[index - 1] ?: return false
+            val current = measurements[index] ?: return false
+            if (frames[index].attemptId != frames[index - 1].attemptId ||
+                frames[index].frameIndex != frames[index - 1].frameIndex + 1 ||
+                frames[index].timestamp <= frames[index - 1].timestamp
+            ) return false
+            for (limb in LIMB_LANDMARKS.indices) {
+                val before = previous.limbs[limb]
+                val after = current.limbs[limb]
+                if (before != null && after != null) {
+                    val anchor = anchors[limb] ?: before.also { anchors[limb] = it }
+                    largestExcursion = maxOf(largestExcursion, distance(anchor, after))
+                } else {
+                    anchors[limb] = null
+                }
+            }
         }
+        // Bounded displacement avoids accumulating tiny pose jitters into apparent exploration.
+        return largestExcursion / scale >= MIN_LIMB_EXCURSION
     }
 
     // Measurements share an image-plane scale: normalized x is multiplied by width/height.
@@ -94,8 +126,9 @@ class HesitationStrategy : ClassificationStrategy {
 
     private companion object {
         // Provisional engineering estimates.
-        private const val MAX_PELVIS_SPEED = 0.1f // Torso lengths per second.
-        private const val MIN_LIMB_SPEED = 0.2f // Torso lengths per second.
+        private const val MAX_PELVIS_SPEED = 0.3f // Net torso lengths per second across the window.
+        private const val MIN_LIMB_EXCURSION = 0.1f // Torso lengths from an observed position in the window.
+        private const val OBSERVATION_WINDOW_MS = 1_000L
         private const val MIN_HESITATION_MS = 1_000L
         private const val MIN_LANDMARK_CONFIDENCE = 0.5f
         private const val MILLIS_PER_SECOND = 1_000f

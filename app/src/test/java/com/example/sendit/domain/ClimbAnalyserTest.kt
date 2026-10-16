@@ -5,6 +5,72 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ClimbAnalyserTest {
+    // Small pose-estimation oscillations can have a large accumulated path at a high frame rate.
+    // They should not turn a stationary climber into an exploratory hesitation.
+    @Test
+    fun classify_doesNotTreatSmallHighFrequencyPoseJitterAsExploration() {
+        val frames = (0L..1_000L step 20L).mapIndexed { index, time ->
+            val jitter = TORSO_LENGTH * if (index % 2 == 0) 0.02f else -0.02f
+            frame(index, time, wristOffset = jitter)
+        }
+
+        assertTrue(ClimbAnalyser.classify(frames, SQUARE_ASPECT_RATIO).isEmpty())
+    }
+
+    // An occluded hand must not erase movement observed from the other hand in the same interval.
+    // Every moving pair is observed; no movement is inferred across an occlusion.
+    @Test
+    fun classify_usesObservedExplorationWhenTheVisibleHandChanges() {
+        val frames = exploration().mapIndexed { index, pose ->
+            val left = LEFT_WRIST * PoseFrame.VALUES_PER_LANDMARK
+            val right = RIGHT_WRIST * PoseFrame.VALUES_PER_LANDMARK
+            pose.coordinates[right] = pose.coordinates[left] + TORSO_LENGTH * 0.4f
+            pose.coordinates[left + VISIBILITY_OFFSET] = if (index <= 1) 1f else 0.1f
+            pose.coordinates[right + VISIBILITY_OFFSET] = if (index >= 1) 1f else 0.1f
+            pose
+        }
+
+        val findings = ClimbAnalyser.classify(frames, SQUARE_ASPECT_RATIO)
+
+        assertEquals(1, findings.size)
+        assertEquals(FIRST_FRAME_INDEX, findings.single().startFrameIndex)
+        assertEquals(frames.last().frameIndex, findings.single().endFrameIndex)
+    }
+
+    // Regression for the reported opening hesitation: body shifts do not necessarily advance the climb.
+    // The hips repeatedly return to the same position while the climber keeps exploring with a wrist.
+    @Test
+    fun classify_keepsHesitationThroughRepeatedBodyShiftsWithoutProgress() {
+        val frames = (0L..LONG_HESITATION_MS step SAMPLE_INTERVAL_MS).mapIndexed { index, time ->
+            val sway = if (index % 4 < 2) 0f else TORSO_LENGTH * 0.08f
+            frame(index, time, hipShift = sway)
+        }
+
+        val findings = ClimbAnalyser.classify(frames, SQUARE_ASPECT_RATIO)
+
+        assertEquals(
+            listOf(FIRST_FRAME_INDEX to frames.last().frameIndex),
+            findings.map { it.startFrameIndex to it.endFrameIndex }
+        )
+    }
+
+    // Searching can contain short still moments; a wrist need not move in every sampled pair.
+    // This differs from the existing fully motionless rest fixture, which should still produce no finding.
+    @Test
+    fun classify_keepsHesitationBetweenIntermittentExploratoryMovements() {
+        val frames = (0L..LONG_HESITATION_MS step SAMPLE_INTERVAL_MS).mapIndexed { index, time ->
+            val reach = if (index % 4 == 1) TORSO_LENGTH * 0.15f else 0f
+            frame(index, time, wristOffset = reach)
+        }
+
+        val findings = ClimbAnalyser.classify(frames, SQUARE_ASPECT_RATIO)
+
+        assertEquals(
+            listOf(FIRST_FRAME_INDEX to frames.last().frameIndex),
+            findings.map { it.startFrameIndex to it.endFrameIndex }
+        )
+    }
+
     // Low pelvis movement with ongoing limb movement is a likely hesitation.
     // Findings use the original frame indices, not positions in this test's list.
     @Test
@@ -63,16 +129,18 @@ class ClimbAnalyserTest {
         }
     }
 
-    // Same coordinates and total duration, but early movement is faster at uneven timestamps.
-    // The remaining slow period is too short to qualify; assuming a fixed frame rate is wrong.
+    // The same displacement over four seconds is slow; over one second it is progression.
+    // Both sequences meet the minimum duration, so the difference must come from elapsed-time speed.
     @Test
     fun classify_usesElapsedTimeForMovementSpeed() {
-        val frames = exploration()
-        val unevenTimes = listOf(0L, 100L, 200L, 300L, 1_000L)
-        val fasterStart = frames.mapIndexed { index, frame -> frame.copy(timestamp = unevenTimes[index]) }
+        val frames = SAMPLE_TIMES.mapIndexed { index, time ->
+            val reach = if (index % 2 == 0) 0f else TORSO_LENGTH * 0.4f
+            frame(index, time * 4, hipShift = TORSO_LENGTH * index * 0.08f, wristOffset = reach)
+        }
+        val faster = frames.mapIndexed { index, frame -> frame.copy(timestamp = SAMPLE_TIMES[index]) }
 
         assertEquals(1, ClimbAnalyser.classify(frames, SQUARE_ASPECT_RATIO).size)
-        assertTrue(ClimbAnalyser.classify(fasterStart, SQUARE_ASPECT_RATIO).isEmpty())
+        assertTrue(ClimbAnalyser.classify(faster, SQUARE_ASPECT_RATIO).isEmpty())
     }
 
     // Missing, low-confidence, or unknown-confidence observations break continuity.
@@ -165,6 +233,8 @@ class ClimbAnalyserTest {
         const val FIRST_FRAME_INDEX = 10
         const val SQUARE_ASPECT_RATIO = 1f
         const val TORSO_LENGTH = 0.2f
+        const val LONG_HESITATION_MS = 14_000L
+        const val SAMPLE_INTERVAL_MS = 250L
         val SAMPLE_TIMES = listOf(0L, 250L, 500L, 750L, 1_000L)
 
         // MediaPipe landmark IDs and offsets in the existing PoseFrame coordinate layout.
