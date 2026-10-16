@@ -2,9 +2,6 @@ package com.example.sendit.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,11 +22,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,7 +34,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
@@ -71,7 +64,6 @@ fun AttemptDetailScreen(
     val playback = rememberSaveable(poseFrames, saver = PosePlaybackState.saver(poseFrames)) {
         PosePlaybackState(poseFrames)
     }
-    PlaybackClock(playback)
     // Finding boundaries are original frame indices; track placement uses their recorded times.
     val hesitationTimes = remember(poseFrames, findings) {
         val timestamps = poseFrames.associate { it.frameIndex to it.timestamp }
@@ -106,7 +98,6 @@ fun AttemptDetailScreen(
 
 private val ScrubThumbWidth = 8.dp
 private val ScrubThumbHeight = 44.dp
-private val PlayButtonPadding = SendItSpacing.medium // 24dp icon + padding = 48dp minimum touch target
 // Keeps the controls tight so the scrub bar has more room.
 private const val ControlsPaddingScale = 2f / 3f
 
@@ -138,22 +129,7 @@ fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
-// Uses elapsed screen time so playback speed does not depend on how many poses were detected.
-@Composable
-private fun PlaybackClock(playback: PosePlaybackState) {
-    LaunchedEffect(playback, playback.isPlaying) {
-        if (!playback.isPlaying) return@LaunchedEffect
-        var previousTime = withFrameMillis { it }
-        while (playback.isPlaying) {
-            withFrameMillis { time ->
-                playback.advanceBy(time - previousTime)
-                previousTime = time
-            }
-        }
-    }
-}
-
-// Connects the play button and scrub bar to the same playback state.
+// Connects the scrub bar to the displayed pose and recorded time.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PlaybackControls(playback: PosePlaybackState, hesitationTimes: List<Pair<Long, Long>>) {
@@ -163,31 +139,13 @@ private fun PlaybackControls(playback: PosePlaybackState, hesitationTimes: List<
         Modifier.fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             .padding(
-                start = SendItSpacing.extraSmall * ControlsPaddingScale, // The play icon has its own padding.
+                start = SendItSpacing.large * ControlsPaddingScale,
                 top = SendItSpacing.medium * ControlsPaddingScale,
                 end = SendItSpacing.large * ControlsPaddingScale,
                 bottom = SendItSpacing.medium * ControlsPaddingScale
             )
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            val action = if (playback.isPlaying) "Pause" else "Play"
-            val interactionSource = remember { MutableInteractionSource() }
-            val isPressed by interactionSource.collectIsPressedAsState()
-            // Play/pause button
-            Icon(
-                painterResource(if (playback.isPlaying) R.drawable.ic_pause else R.drawable.ic_play),
-                contentDescription = action,
-                tint = if (isPressed) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier
-                    .clickable(
-                        interactionSource = interactionSource,
-                        indication = null,
-                        enabled = playback.durationMs > 0L,
-                        role = Role.Button,
-                        onClick = playback::togglePlayback
-                    )
-                    .padding(PlayButtonPadding)
-            )
             // Video scrub/progress bar
             Slider(
                 value = playback.positionMs.toFloat(),
@@ -195,7 +153,7 @@ private fun PlaybackControls(playback: PosePlaybackState, hesitationTimes: List<
                 valueRange = 0f..playback.durationMs.coerceAtLeast(1L).toFloat(),
                 enabled = playback.durationMs > 0L,
                 modifier = Modifier.weight(1f).semantics { contentDescription = "Playback position" },
-                // Orange pill thumb on a peach (played) / dark (remaining) track, with no gap or end dot.
+                // Orange pill thumb on a peach/dark position track, with no gap or end dot.
                 thumb = {
                     Box(
                         Modifier.width(ScrubThumbWidth)

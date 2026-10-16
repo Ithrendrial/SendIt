@@ -55,23 +55,6 @@ class AttemptDetailScreenTest {
         assertEquals(Color.White, image.toPixelMap()[image.width / 2, image.height / 4])
     }
 
-    // Checks play moves the timeline and pause stops it, using the test clock instead of waiting.
-    @Test
-    fun playAndPauseControlTheTimeline() {
-        compose.mainClock.autoAdvance = false
-        showAttempt(listOf(frame(0), frame(2000)))
-        compose.mainClock.advanceTimeByFrame()
-
-        compose.onNodeWithContentDescription("Play").performClick()
-        compose.mainClock.advanceTimeBy(1200)
-        compose.onNodeWithText("0:01 / 0:02").assertIsDisplayed()
-
-        compose.onNodeWithContentDescription("Pause").performClick()
-        compose.mainClock.advanceTimeBy(1200)
-        compose.onNodeWithText("0:01 / 0:02").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Play").assertIsDisplayed()
-    }
-
     // Checks rotating the screen keeps the playback position instead of restarting from the beginning.
     @Test
     fun rotatingScreenKeepsPlaybackPosition() {
