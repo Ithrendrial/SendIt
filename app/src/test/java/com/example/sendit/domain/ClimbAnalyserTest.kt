@@ -8,8 +8,8 @@ class ClimbAnalyserTest {
     // Low pelvis movement with ongoing limb movement is a likely hesitation.
     // Findings use the original frame indices, not positions in this test's list.
     @Test
-    fun findHesitations_reportsExplorationWithOriginalFrameBoundaries() {
-        val findings = ClimbAnalyser.findHesitations(exploration(), SQUARE_ASPECT_RATIO)
+    fun classify_reportsExplorationWithOriginalFrameBoundaries() {
+        val findings = ClimbAnalyser.classify(exploration(), SQUARE_ASPECT_RATIO)
 
         assertEquals(1, findings.size)
         val finding = findings.single()
@@ -21,42 +21,42 @@ class ClimbAnalyserTest {
 
     // A still rest does not become hesitation just because it lasts a long time.
     @Test
-    fun findHesitations_doesNotLabelAStillRest() {
+    fun classify_doesNotLabelAStillRest() {
         val frames = listOf(0L, 1_000L, 2_000L, 3_000L).mapIndexed { index, time ->
             frame(index, time, wristOffset = 0f)
         }
 
-        assertTrue(ClimbAnalyser.findHesitations(frames, SQUARE_ASPECT_RATIO).isEmpty())
+        assertTrue(ClimbAnalyser.classify(frames, SQUARE_ASPECT_RATIO).isEmpty())
     }
 
     // Ordinary upward progression is not hesitation even though limbs are moving.
     @Test
-    fun findHesitations_doesNotLabelContinuousProgression() {
+    fun classify_doesNotLabelContinuousProgression() {
         val frames = SAMPLE_TIMES.mapIndexed { index, time ->
             frame(index, time, hipRise = TORSO_LENGTH * index * 0.1f)
         }
 
-        assertTrue(ClimbAnalyser.findHesitations(frames, SQUARE_ASPECT_RATIO).isEmpty())
+        assertTrue(ClimbAnalyser.classify(frames, SQUARE_ASPECT_RATIO).isEmpty())
     }
 
     // The estimated minimum duration is one second, measured from timestamps.
     @Test
-    fun findHesitations_requiresAFullSecondOfExploration() {
+    fun classify_requiresAFullSecondOfExploration() {
         val shortExploration = exploration().map { it.copy(timestamp = it.timestamp * 999L / 1_000L) }
 
-        assertTrue(ClimbAnalyser.findHesitations(shortExploration, SQUARE_ASPECT_RATIO).isEmpty())
-        assertEquals(1, ClimbAnalyser.findHesitations(exploration(), SQUARE_ASPECT_RATIO).size)
+        assertTrue(ClimbAnalyser.classify(shortExploration, SQUARE_ASPECT_RATIO).isEmpty())
+        assertEquals(1, ClimbAnalyser.classify(exploration(), SQUARE_ASPECT_RATIO).size)
     }
 
     // The same body-relative movement should qualify at different image proportions and scales.
     // Lateral pelvis speed is 0.08 torso lengths/second, below the provisional 0.1 limit.
     @Test
-    fun findHesitations_accountsForAspectRatioAndBodyScale() {
+    fun classify_accountsForAspectRatioAndBodyScale() {
         val views = listOf(1f to TORSO_LENGTH, 0.5f to TORSO_LENGTH / 2f, 2f to TORSO_LENGTH)
         for ((aspectRatio, torsoLength) in views) {
             val frames = exploration(aspectRatio, torsoLength)
 
-            val finding = ClimbAnalyser.findHesitations(frames, aspectRatio).single()
+            val finding = ClimbAnalyser.classify(frames, aspectRatio).single()
 
             assertEquals(FIRST_FRAME_INDEX, finding.startFrameIndex)
             assertEquals(FIRST_FRAME_INDEX + SAMPLE_TIMES.lastIndex, finding.endFrameIndex)
@@ -66,19 +66,19 @@ class ClimbAnalyserTest {
     // Same coordinates and total duration, but early movement is faster at uneven timestamps.
     // The remaining slow period is too short to qualify; assuming a fixed frame rate is wrong.
     @Test
-    fun findHesitations_usesElapsedTimeForMovementSpeed() {
+    fun classify_usesElapsedTimeForMovementSpeed() {
         val frames = exploration()
         val unevenTimes = listOf(0L, 100L, 200L, 300L, 1_000L)
         val fasterStart = frames.mapIndexed { index, frame -> frame.copy(timestamp = unevenTimes[index]) }
 
-        assertEquals(1, ClimbAnalyser.findHesitations(frames, SQUARE_ASPECT_RATIO).size)
-        assertTrue(ClimbAnalyser.findHesitations(fasterStart, SQUARE_ASPECT_RATIO).isEmpty())
+        assertEquals(1, ClimbAnalyser.classify(frames, SQUARE_ASPECT_RATIO).size)
+        assertTrue(ClimbAnalyser.classify(fasterStart, SQUARE_ASPECT_RATIO).isEmpty())
     }
 
     // Missing, low-confidence, or unknown-confidence observations break continuity.
     // The rule must not join the short valid periods on either side into one finding.
     @Test
-    fun findHesitations_doesNotBridgeUnavailablePoseEvidence() {
+    fun classify_doesNotBridgeUnavailablePoseEvidence() {
         val frames = exploration()
         val middle = frames[2]
         val unavailableFrames = listOf(
@@ -92,17 +92,17 @@ class ClimbAnalyserTest {
         for (unavailable in unavailableFrames) {
             val interrupted = frames.toMutableList().apply { this[2] = unavailable }
 
-            assertTrue(ClimbAnalyser.findHesitations(interrupted, SQUARE_ASPECT_RATIO).isEmpty())
+            assertTrue(ClimbAnalyser.classify(interrupted, SQUARE_ASPECT_RATIO).isEmpty())
         }
     }
 
     // A collapsed torso cannot provide a usable scale, and empty input has no finding.
     @Test
-    fun findHesitations_returnsNoFindingsWithoutUsableBodyMeasurements() {
+    fun classify_returnsNoFindingsWithoutUsableBodyMeasurements() {
         val frames = SAMPLE_TIMES.mapIndexed { index, time -> frame(index, time, torsoLength = 0f) }
 
-        assertTrue(ClimbAnalyser.findHesitations(frames, SQUARE_ASPECT_RATIO).isEmpty())
-        assertTrue(ClimbAnalyser.findHesitations(emptyList(), SQUARE_ASPECT_RATIO).isEmpty())
+        assertTrue(ClimbAnalyser.classify(frames, SQUARE_ASPECT_RATIO).isEmpty())
+        assertTrue(ClimbAnalyser.classify(emptyList(), SQUARE_ASPECT_RATIO).isEmpty())
     }
 
     // Builds a one-second sequence: slowly shifting pelvis and alternating wrist positions.
