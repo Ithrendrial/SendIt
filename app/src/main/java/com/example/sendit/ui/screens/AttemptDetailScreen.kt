@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +33,12 @@ import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
@@ -40,6 +47,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.example.sendit.R
 import com.example.sendit.domain.PoseFrame
+import com.example.sendit.domain.Finding
 import com.example.sendit.ui.theme.SendItSpacing
 
 // The form details shown above the playback, taken from the saved route and attempt.
@@ -57,12 +65,22 @@ fun AttemptDetailScreen(
     videoAspectRatio: Float,
     heading: AttemptHeading,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    findings: List<Finding> = emptyList()
 ) {
     val playback = rememberSaveable(poseFrames, saver = PosePlaybackState.saver(poseFrames)) {
         PosePlaybackState(poseFrames)
     }
     PlaybackClock(playback)
+    // Finding boundaries are original frame indices; track placement uses their recorded times.
+    val hesitationTimes = remember(poseFrames, findings) {
+        val timestamps = poseFrames.associate { it.frameIndex to it.timestamp }
+        findings.filter { it.type == "HESITATION" }.mapNotNull { finding ->
+            val start = timestamps[finding.startFrameIndex] ?: return@mapNotNull null
+            val end = timestamps[finding.endFrameIndex] ?: return@mapNotNull null
+            if (end > start) start to end else null
+        }
+    }
 
     Column(
         modifier.fillMaxSize().padding(SendItSpacing.screenPadding),
@@ -80,7 +98,7 @@ fun AttemptDetailScreen(
                     modifier = Modifier.aspectRatio(videoAspectRatio)
                 )
             }
-            PlaybackControls(playback)
+            PlaybackControls(playback, hesitationTimes)
         }
         if (poseFrames.isEmpty()) Text("No pose frames available")
     }
@@ -138,7 +156,9 @@ private fun PlaybackClock(playback: PosePlaybackState) {
 // Connects the play button and scrub bar to the same playback state.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PlaybackControls(playback: PosePlaybackState) {
+private fun PlaybackControls(playback: PosePlaybackState, hesitationTimes: List<Pair<Long, Long>>) {
+    val hesitationColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     Column(
         Modifier.fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
@@ -186,6 +206,22 @@ private fun PlaybackControls(playback: PosePlaybackState) {
                 track = { sliderState ->
                     SliderDefaults.Track(
                         sliderState = sliderState,
+                        // Paint over the normal track so findings stay visible after the playhead passes.
+                        modifier = Modifier.clip(CircleShape).drawWithContent {
+                            drawContent()
+                            if (playback.durationMs > 0L) {
+                                for ((start, end) in hesitationTimes) {
+                                    val startFraction = (start.toFloat() / playback.durationMs).coerceIn(0f, 1f)
+                                    val endFraction = (end.toFloat() / playback.durationMs).coerceIn(0f, 1f)
+                                    val left = if (isRtl) 1f - endFraction else startFraction
+                                    drawRect(
+                                        color = hesitationColor,
+                                        topLeft = Offset(size.width * left, 0f),
+                                        size = Size(size.width * (endFraction - startFraction), size.height)
+                                    )
+                                }
+                            }
+                        },
                         colors = SliderDefaults.colors(
                             activeTrackColor = MaterialTheme.colorScheme.secondary,
                             inactiveTrackColor = MaterialTheme.colorScheme.background
@@ -204,6 +240,14 @@ private fun PlaybackControls(playback: PosePlaybackState) {
                 fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SendItSpacing.small, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(SendItSpacing.small).background(hesitationColor, CircleShape))
+            Text("Hesitation", style = MaterialTheme.typography.labelSmall, color = hesitationColor)
         }
     }
 }

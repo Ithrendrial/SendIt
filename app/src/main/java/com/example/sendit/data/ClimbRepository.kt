@@ -2,6 +2,7 @@ package com.example.sendit.data
 
 import androidx.room.withTransaction
 import com.example.sendit.domain.PoseFrame
+import com.example.sendit.domain.Finding
 
 class ClimbRepository(private val database: AppDatabase) {
     private val dao = database.attemptDao()
@@ -21,10 +22,14 @@ class ClimbRepository(private val database: AppDatabase) {
         dao.insert(attempt)
     }
 
-    // Saves a complete reconstruction before marking the attempt ready to display.
-    suspend fun saveAnalysis(attemptId: String, frames: List<PoseFrame>, aspectRatio: Float) = database.withTransaction {
+    // Saves reconstruction and findings together before marking the attempt ready to display.
+    suspend fun saveAnalysis(
+        attemptId: String, frames: List<PoseFrame>, aspectRatio: Float, findings: List<Finding>
+    ) = database.withTransaction {
         dao.deleteFrames(attemptId)
+        dao.deleteFindings(attemptId)
         dao.insertFrames(frames)
+        dao.insertFindings(findings)
         dao.complete(attemptId, aspectRatio)
     }
 

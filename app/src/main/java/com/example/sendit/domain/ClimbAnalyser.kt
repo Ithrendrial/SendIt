@@ -15,7 +15,7 @@ class ClimbAnalyser(
     private val extractor: PoseExtractor,
     private val repository: ClimbRepository
 ) {
-    // Extracts and saves the reconstruction. Other analysis features will be added later.
+    // Extracts the reconstruction, classifies hesitation, and saves the complete result.
     suspend fun processAttempt(
         attemptId: String, routeId: String, video: Uri, onProgress: suspend (Int) -> Unit = {}
     ) {
@@ -23,7 +23,8 @@ class ClimbAnalyser(
         require(attempt.routeId == routeId)
         val aspectRatio = readAspectRatio(video)
         val frames = extractor.extract(PoseExtractor.VideoInput(video.toString(), attemptId), onProgress)
-        repository.saveAnalysis(attemptId, frames, aspectRatio)
+        val findings = withContext(Dispatchers.Default) { classify(frames, aspectRatio) }
+        repository.saveAnalysis(attemptId, frames, aspectRatio, findings)
     }
 
     // Reads the video proportions, including portrait videos stored with a rotation tag.
