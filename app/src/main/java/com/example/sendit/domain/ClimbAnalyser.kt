@@ -37,4 +37,13 @@ class ClimbAnalyser(
             if (rotation == 90 || rotation == 270) height / width else width / height
         }
     }
+
+    companion object {
+        // Delegates to the chosen algorithm. Hesitation is the only implemented strategy so far.
+        fun classify(
+            frames: List<PoseFrame>,
+            aspectRatio: Float,
+            strategy: ClassificationStrategy = HesitationStrategy()
+        ): List<Finding> = strategy.classify(frames, aspectRatio)
+    }
 }
