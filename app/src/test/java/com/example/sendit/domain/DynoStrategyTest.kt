@@ -5,10 +5,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DynoStrategyTest {
-    // Stable setup, substantial upward relocation, then settled wrists produce one candidate.
+    // A moving preparation followed by upward relocation and settled wrists produces one candidate.
     @Test
-    fun classify_identifiesOneUpwardRelocationWithACatchLikeFinish() {
-        val frames = dynoSequence()
+    fun classify_identifiesOneUpwardRelocationAfterAMovingPreparation() {
+        val frames = dynoSequence().map { frame ->
+            val coordinates = frame.coordinates.copyOf()
+            if (frame.timestamp <= 200L) {
+                // Preparatory adjustment exceeds the old stillness tolerance without losing tracking.
+                val adjustment = frame.timestamp / 200f * TORSO_LENGTH * 0.2f
+                for (landmark in listOf(15, 16, 27, 28)) {
+                    coordinates[landmark * PoseFrame.VALUES_PER_LANDMARK] += adjustment
+                }
+            }
+            frame.copy(coordinates = coordinates)
+        }
 
         val findings = DynoStrategy().classify(frames, ASPECT_RATIO)
 
