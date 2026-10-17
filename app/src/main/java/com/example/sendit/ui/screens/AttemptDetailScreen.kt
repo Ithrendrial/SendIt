@@ -65,13 +65,13 @@ fun AttemptDetailScreen(
         PosePlaybackState(poseFrames)
     }
     // Finding boundaries are original frame indices; track placement uses their recorded times.
-    val hesitationTimes = remember(poseFrames, findings) {
+    val trackIntervals = remember(poseFrames, findings) {
         val timestamps = poseFrames.associate { it.frameIndex to it.timestamp }
-        findings.filter { it.type == "HESITATION" }.mapNotNull { finding ->
+        findings.filter { it.type == "HESITATION" || it.type == "CRUX" }.mapNotNull { finding ->
             val start = timestamps[finding.startFrameIndex] ?: return@mapNotNull null
             val end = timestamps[finding.endFrameIndex] ?: return@mapNotNull null
-            if (end > start) start to end else null
-        }
+            if (end >= start) TrackInterval(start, end, finding.type == "CRUX") else null
+        }.sortedBy { it.isCrux } // Draw crux last so it remains visible over hesitation.
     }
 
     Column(
@@ -90,11 +90,13 @@ fun AttemptDetailScreen(
                     modifier = Modifier.aspectRatio(videoAspectRatio)
                 )
             }
-            PlaybackControls(playback, hesitationTimes)
+            PlaybackControls(playback, trackIntervals)
         }
         if (poseFrames.isEmpty()) Text("No pose frames available")
     }
 }
+
+private data class TrackInterval(val startMs: Long, val endMs: Long, val isCrux: Boolean)
 
 private val ScrubThumbWidth = 8.dp
 private val ScrubThumbHeight = 44.dp
@@ -132,8 +134,9 @@ fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
 // Connects the scrub bar to the displayed pose and recorded time.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PlaybackControls(playback: PosePlaybackState, hesitationTimes: List<Pair<Long, Long>>) {
+private fun PlaybackControls(playback: PosePlaybackState, trackIntervals: List<TrackInterval>) {
     val hesitationColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val cruxColor = MaterialTheme.colorScheme.primary
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     Column(
         Modifier.fillMaxWidth()
@@ -167,17 +170,20 @@ private fun PlaybackControls(playback: PosePlaybackState, hesitationTimes: List<
                         // Paint over the normal track so findings stay visible after the playhead passes.
                         modifier = Modifier.clip(CircleShape).drawWithContent {
                             drawContent()
-                            if (playback.durationMs > 0L) {
-                                for ((start, end) in hesitationTimes) {
-                                    val startFraction = (start.toFloat() / playback.durationMs).coerceIn(0f, 1f)
-                                    val endFraction = (end.toFloat() / playback.durationMs).coerceIn(0f, 1f)
-                                    val left = if (isRtl) 1f - endFraction else startFraction
-                                    drawRect(
-                                        color = hesitationColor,
-                                        topLeft = Offset(size.width * left, 0f),
-                                        size = Size(size.width * (endFraction - startFraction), size.height)
-                                    )
-                                }
+                            for (interval in trackIntervals) {
+                                val duration = playback.durationMs.coerceAtLeast(1L)
+                                val startFraction = (interval.startMs.toFloat() / duration).coerceIn(0f, 1f)
+                                val endFraction = (interval.endMs.toFloat() / duration).coerceIn(0f, 1f)
+                                val left = if (isRtl) 1f - endFraction else startFraction
+                                // A single usable frame still gets a visible point marker.
+                                val markerWidth = if (interval.startMs == interval.endMs) {
+                                    ScrubThumbWidth.toPx().coerceAtMost(size.width)
+                                } else size.width * (endFraction - startFraction)
+                                drawRect(
+                                    color = if (interval.isCrux) cruxColor else hesitationColor,
+                                    topLeft = Offset((size.width * left).coerceIn(0f, size.width - markerWidth), 0f),
+                                    size = Size(markerWidth, size.height)
+                                )
                             }
                         },
                         colors = SliderDefaults.colors(
@@ -206,6 +212,8 @@ private fun PlaybackControls(playback: PosePlaybackState, hesitationTimes: List<
         ) {
             Box(Modifier.size(SendItSpacing.small).background(hesitationColor, CircleShape))
             Text("Hesitation", style = MaterialTheme.typography.labelSmall, color = hesitationColor)
+            Box(Modifier.size(SendItSpacing.small).background(cruxColor, CircleShape))
+            Text("Estimated crux", style = MaterialTheme.typography.labelSmall, color = cruxColor)
         }
     }
 }

@@ -15,7 +15,7 @@ class ClimbAnalyser(
     private val extractor: PoseExtractor,
     private val repository: ClimbRepository
 ) {
-    // Extracts the reconstruction, classifies hesitation, and saves the complete result.
+    // Extracts the reconstruction, classifies hesitation and crux, and saves the complete result.
     suspend fun processAttempt(
         attemptId: String, routeId: String, video: Uri, onProgress: suspend (Int) -> Unit = {}
     ) {
@@ -23,7 +23,9 @@ class ClimbAnalyser(
         require(attempt.routeId == routeId)
         val aspectRatio = readAspectRatio(video)
         val frames = extractor.extract(PoseExtractor.VideoInput(video.toString(), attemptId), onProgress)
-        val findings = withContext(Dispatchers.Default) { classify(frames, aspectRatio) }
+        val findings = withContext(Dispatchers.Default) {
+            classify(frames, aspectRatio) + classify(frames, aspectRatio, CruxStrategy())
+        }
         repository.saveAnalysis(attemptId, frames, aspectRatio, findings)
     }
 
@@ -40,7 +42,7 @@ class ClimbAnalyser(
     }
 
     companion object {
-        // Delegates to the chosen algorithm. Hesitation is the only implemented strategy so far.
+        // Delegates to the chosen classification strategy.
         fun classify(
             frames: List<PoseFrame>,
             aspectRatio: Float,
