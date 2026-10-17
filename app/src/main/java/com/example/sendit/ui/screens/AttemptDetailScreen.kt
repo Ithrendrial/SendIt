@@ -1,11 +1,17 @@
 package com.example.sendit.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -13,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Surface
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -65,8 +73,8 @@ fun AttemptDetailScreen(
         PosePlaybackState(poseFrames)
     }
     // Finding boundaries are original frame indices; track placement uses their recorded times.
-    val trackIntervals = remember(poseFrames, findings) {
-        val timestamps = poseFrames.associate { it.frameIndex to it.timestamp }
+    val timestamps = remember(poseFrames) { poseFrames.associate { it.frameIndex to it.timestamp } }
+    val trackIntervals = remember(timestamps, findings) {
         findings.filter { it.type == "HESITATION" || it.type == "CRUX" }.mapNotNull { finding ->
             val start = timestamps[finding.startFrameIndex] ?: return@mapNotNull null
             val end = timestamps[finding.endFrameIndex] ?: return@mapNotNull null
@@ -74,25 +82,94 @@ fun AttemptDetailScreen(
         }.sortedBy { it.isCrux } // Draw crux last so it remains visible over hesitation.
     }
 
-    Column(
-        modifier.fillMaxSize().padding(SendItSpacing.screenPadding),
-        verticalArrangement = Arrangement.spacedBy(SendItSpacing.large)
-    ) {
-        AttemptHeader(heading, onBack)
-        Card(modifier = Modifier.weight(1f).fillMaxWidth(), shape = MaterialTheme.shapes.large) {
-            // Controls take their required height first; the body fits in the space left above them.
-            Box(
-                modifier = Modifier.weight(1f).fillMaxWidth().background(Color.White),
-                contentAlignment = Alignment.Center
-            ) {
-                PoseSkeleton(
-                    frame = playback.currentFrame,
-                    modifier = Modifier.aspectRatio(videoAspectRatio)
-                )
+    val techniques = remember(timestamps, findings) {
+        val names = mapOf(
+            "FLAGGING" to "Flagging", "DYNO" to "Dyno", "HEEL_HOOK" to "Heel Hook",
+            "HIGH_STEP" to "High Step", "MANTLE" to "Mantle"
+        )
+        findings.mapNotNull { finding ->
+            val name = names[finding.type] ?: return@mapNotNull null
+            val time = timestamps[finding.startFrameIndex] ?: return@mapNotNull null
+            TechniqueItem(name, time)
+        }.sortedBy { it.startMs }
+    }
+
+    BoxWithConstraints(modifier.fillMaxSize().padding(SendItSpacing.screenPadding)) {
+        // Reserve most of the viewport for the reconstruction; cards remain reachable by scrolling.
+        val playerHeight = maxHeight * PlayerHeightFraction
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(SendItSpacing.large)
+        ) {
+            AttemptHeader(heading, onBack)
+            Card(modifier = Modifier.height(playerHeight).fillMaxWidth(), shape = MaterialTheme.shapes.large) {
+                // Controls take their required height first; the body fits in the space left above them.
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth().background(Color.White),
+                    contentAlignment = Alignment.Center
+                ) {
+                    PoseSkeleton(
+                        frame = playback.currentFrame,
+                        modifier = Modifier.aspectRatio(videoAspectRatio)
+                    )
+                }
+                PlaybackControls(playback, trackIntervals)
             }
-            PlaybackControls(playback, trackIntervals)
+            if (poseFrames.isEmpty()) Text("No pose frames available")
+            TechniqueCards(techniques, onSelect = playback::scrubTo)
         }
-        if (poseFrames.isEmpty()) Text("No pose frames available")
+    }
+}
+
+private data class TechniqueItem(val name: String, val startMs: Long)
+
+// Keeps the video usable while leaving a preview of the section below it.
+private const val PlayerHeightFraction = 0.7f
+
+@Composable
+private fun TechniqueCards(techniques: List<TechniqueItem>, onSelect: (Long) -> Unit) {
+    Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
+        Column(
+            Modifier.padding(SendItSpacing.extraLarge),
+            verticalArrangement = Arrangement.spacedBy(SendItSpacing.large)
+        ) {
+            Text("Techniques Used", style = MaterialTheme.typography.titleLarge)
+            if (techniques.isEmpty()) {
+                Text("No techniques identified", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            for (technique in techniques) {
+                Card(
+                    onClick = { onSelect(technique.startMs) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                ) {
+                    Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(SendItSpacing.extraSmall).fillMaxHeight()
+                            .background(MaterialTheme.colorScheme.secondary))
+                        Row(
+                            Modifier.weight(1f).padding(SendItSpacing.large),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(SendItSpacing.small)
+                        ) {
+                            Text("Technique: ${technique.name}", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                            Surface(
+                                shape = MaterialTheme.shapes.extraSmall,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest
+                            ) {
+                                Text(
+                                    formatPlaybackTime(technique.startMs),
+                                    Modifier.padding(horizontal = SendItSpacing.small, vertical = SendItSpacing.extraSmall),
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -100,7 +177,7 @@ private data class TrackInterval(val startMs: Long, val endMs: Long, val isCrux:
 
 private val ScrubThumbWidth = 8.dp
 private val ScrubThumbHeight = 44.dp
-// Keeps the controls tight so the scrub bar has more room.
+// Compact vertical spacing and the gap between the track and time display.
 private const val ControlsPaddingScale = 2f / 3f
 
 // Back arrow on the left, with the route name and its details centred beside it.
@@ -142,9 +219,9 @@ private fun PlaybackControls(playback: PosePlaybackState, trackIntervals: List<T
         Modifier.fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             .padding(
-                start = SendItSpacing.large * ControlsPaddingScale,
+                start = SendItSpacing.extraLarge,
                 top = SendItSpacing.medium * ControlsPaddingScale,
-                end = SendItSpacing.large * ControlsPaddingScale,
+                end = SendItSpacing.extraLarge,
                 bottom = SendItSpacing.medium * ControlsPaddingScale
             )
     ) {
@@ -210,6 +287,8 @@ private fun PlaybackControls(playback: PosePlaybackState, trackIntervals: List<T
             horizontalArrangement = Arrangement.spacedBy(SendItSpacing.small, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Box(Modifier.size(SendItSpacing.small).background(Color.Black, CircleShape))
+            Text("Moving", style = MaterialTheme.typography.labelSmall, color = hesitationColor)
             Box(Modifier.size(SendItSpacing.small).background(hesitationColor, CircleShape))
             Text("Hesitation", style = MaterialTheme.typography.labelSmall, color = hesitationColor)
             Box(Modifier.size(SendItSpacing.small).background(cruxColor, CircleShape))
