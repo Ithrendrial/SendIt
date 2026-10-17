@@ -2,8 +2,8 @@ package com.example.sendit.domain
 
 import kotlin.math.hypot
 
-// Shared image-plane measurements for the two classification strategies; no stored state or Android work.
-internal class PoseMeasurements(private val frames: List<PoseFrame>, aspectRatio: Float) {
+// Shared image-plane measurements for classification strategies; no persistence or Android work.
+internal class PoseMeasurements(private val frames: List<PoseFrame>, private val aspectRatio: Float) {
     init {
         require(aspectRatio.isFinite() && aspectRatio > 0f) { "Aspect ratio must be positive and finite" }
     }
@@ -14,6 +14,12 @@ internal class PoseMeasurements(private val frames: List<PoseFrame>, aspectRatio
     }
 
     fun isUsable(index: Int) = measurements[index] != null
+
+    fun landmarkAt(framePosition: Int, landmarkId: Int): Point? {
+        val frame = frames[framePosition]
+        if (frame.coordinates.size != PoseFrame.LANDMARK_COUNT * PoseFrame.VALUES_PER_LANDMARK) return null
+        return landmark(frame, landmarkId, aspectRatio)
+    }
 
     fun isContinuous(previous: Int, current: Int) = isUsable(previous) && isUsable(current) &&
         frames[current].attemptId == frames[previous].attemptId &&
@@ -78,10 +84,10 @@ internal class PoseMeasurements(private val frames: List<PoseFrame>, aspectRatio
 
     private fun midpoint(a: Point, b: Point) = Point((a.x + b.x) / 2f, (a.y + b.y) / 2f)
 
-    private fun distance(a: Point, b: Point) = hypot(a.x - b.x, a.y - b.y)
+    fun distance(a: Point, b: Point) = hypot(a.x - b.x, a.y - b.y)
 
     // Internal calculation values, not stored entities or new architectural components.
-    private data class Point(val x: Float, val y: Float)
+    data class Point(val x: Float, val y: Float)
     private data class Measurements(val pelvis: Point, val torsoLength: Float, val limbs: List<Point?>)
 
     companion object {

@@ -84,7 +84,7 @@ fun AttemptDetailScreen(
 
     val techniques = remember(timestamps, findings) {
         val names = mapOf(
-            "FLAGGING" to "Flagging", "DYNO" to "Dyno", "HEEL_HOOK" to "Heel Hook",
+            "FLAGGING" to "Possible flagging", "DYNO" to "Dyno", "HEEL_HOOK" to "Heel Hook",
             "HIGH_STEP" to "High Step", "MANTLE" to "Mantle"
         )
         findings.mapNotNull { finding ->
