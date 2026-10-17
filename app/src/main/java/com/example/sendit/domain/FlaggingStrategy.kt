@@ -2,7 +2,6 @@ package com.example.sendit.domain
 
 import java.util.UUID
 import kotlin.math.abs
-import kotlin.math.acos
 
 // Pose-only outside-flag candidates. Stable ankles suggest support but cannot establish loading.
 class FlaggingStrategy : ClassificationStrategy {
@@ -64,20 +63,10 @@ class FlaggingStrategy : ClassificationStrategy {
             val extension = (ankles[leg].x - hips[leg].x) * direction / scale
             val supportOffset = abs(ankles[otherLeg].x - pelvisX) / scale
             if (extension >= MIN_OUTSIDE_EXTENSION && supportOffset <= MAX_SUPPORT_OFFSET &&
-                kneeAngle(hips[leg], knees[leg], ankles[leg], measurements) >= MIN_KNEE_ANGLE_DEGREES
+                measurements.kneeAngle(hips[leg], knees[leg], ankles[leg]) >= MIN_KNEE_ANGLE_DEGREES
             ) return Candidate(leg, ankles[otherLeg])
         }
         return null
-    }
-
-    private fun kneeAngle(
-        hip: PoseMeasurements.Point, knee: PoseMeasurements.Point, ankle: PoseMeasurements.Point,
-        measurements: PoseMeasurements
-    ): Double {
-        val lengths = measurements.distance(hip, knee) * measurements.distance(ankle, knee)
-        if (lengths <= 0f) return Double.NaN
-        val dot = (hip.x - knee.x) * (ankle.x - knee.x) + (hip.y - knee.y) * (ankle.y - knee.y)
-        return Math.toDegrees(acos((dot / lengths).coerceIn(-1f, 1f).toDouble()))
     }
 
     private data class Candidate(val leg: Int, val supportingAnkle: PoseMeasurements.Point)

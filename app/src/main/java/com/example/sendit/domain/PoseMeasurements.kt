@@ -1,6 +1,7 @@
 package com.example.sendit.domain
 
 import kotlin.math.hypot
+import kotlin.math.acos
 
 // Shared image-plane measurements for classification strategies; no persistence or Android work.
 internal class PoseMeasurements(private val frames: List<PoseFrame>, private val aspectRatio: Float) {
@@ -13,6 +14,8 @@ internal class PoseMeasurements(private val frames: List<PoseFrame>, private val
         if (lengths.isEmpty()) null else (lengths[(lengths.size - 1) / 2] + lengths[lengths.size / 2]) / 2f
     }
 
+    fun pelvisAt(index: Int): Point? = measurements[index]?.pelvis
+
     fun isUsable(index: Int) = measurements[index] != null
 
     fun landmarkAt(framePosition: Int, landmarkId: Int): Point? {
@@ -22,6 +25,9 @@ internal class PoseMeasurements(private val frames: List<PoseFrame>, private val
     }
 
     fun isContinuous(previous: Int, current: Int) = isUsable(previous) && isUsable(current) &&
+        isFrameSequenceContinuous(previous, current)
+
+    fun isFrameSequenceContinuous(previous: Int, current: Int) =
         frames[current].attemptId == frames[previous].attemptId &&
         frames[current].frameIndex == frames[previous].frameIndex + 1 &&
         frames[current].timestamp > frames[previous].timestamp
@@ -85,6 +91,15 @@ internal class PoseMeasurements(private val frames: List<PoseFrame>, private val
     private fun midpoint(a: Point, b: Point) = Point((a.x + b.x) / 2f, (a.y + b.y) / 2f)
 
     fun distance(a: Point, b: Point) = hypot(a.x - b.x, a.y - b.y)
+
+    fun kneeAngle(
+        hip: PoseMeasurements.Point, knee: PoseMeasurements.Point, ankle: PoseMeasurements.Point
+    ): Double {
+        val lengths = distance(hip, knee) * distance(ankle, knee)
+        if (lengths <= 0f) return Double.NaN
+        val dot = (hip.x - knee.x) * (ankle.x - knee.x) + (hip.y - knee.y) * (ankle.y - knee.y)
+        return Math.toDegrees(acos((dot / lengths).coerceIn(-1f, 1f).toDouble()))
+    }
 
     // Internal calculation values, not stored entities or new architectural components.
     data class Point(val x: Float, val y: Float)

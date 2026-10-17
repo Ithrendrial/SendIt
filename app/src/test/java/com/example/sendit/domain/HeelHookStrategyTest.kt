@@ -5,11 +5,36 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HeelHookStrategyTest {
-    // A near-hip heel stays placed while a bent leg accompanies pelvis movement towards it.
+    // A raised heel settles despite one tracking spike, then leg flexion corroborates use.
     @Test
-    fun classify_returnsOnePossibleHeelHookOnEitherLeg() {
+    fun classify_identifiesHeelPlacementAndUseDespiteATrackingSpike() {
         for (rightLeg in listOf(false, true)) {
-            val frames = hookSequence(rightLeg)
+            val original = hookSequence(rightLeg)
+            val frames = original.map { frame ->
+                val coordinates = frame.coordinates.copyOf()
+                // Keep the body stationary: stabilising hooks need not pull the pelvis closer.
+                for (id in listOf(11, 12, 23, 24)) {
+                    val offset = id * PoseFrame.VALUES_PER_LANDMARK
+                    coordinates[offset] = original.first().coordinates[offset]
+                    coordinates[offset + 1] = original.first().coordinates[offset + 1]
+                }
+                val hip = (if (rightLeg) 24 else 23) * PoseFrame.VALUES_PER_LANDMARK
+                val knee = (if (rightLeg) 26 else 25) * PoseFrame.VALUES_PER_LANDMARK
+                val ankle = (if (rightLeg) 28 else 27) * PoseFrame.VALUES_PER_LANDMARK
+                if (frame.timestamp < 800L) {
+                    coordinates[knee] = (coordinates[hip] + coordinates[ankle]) / 2f
+                    coordinates[knee + 1] = (coordinates[hip + 1] + coordinates[ankle + 1]) / 2f
+                }
+                if (frame.timestamp == 1_000L) {
+                    val heel = (if (rightLeg) 30 else LEFT_HEEL) * PoseFrame.VALUES_PER_LANDMARK
+                    coordinates[heel] += TORSO_LENGTH * 0.25f
+                }
+                if (frame.timestamp >= 1_400L) {
+                    val toe = (if (rightLeg) 32 else LEFT_FOOT_INDEX) * PoseFrame.VALUES_PER_LANDMARK
+                    coordinates[toe + 1] = 0.66f // Toe-up placement can roll to a different orientation.
+                }
+                frame.copy(coordinates = coordinates)
+            }
 
             val findings = HeelHookStrategy().classify(frames, ASPECT_RATIO)
 
@@ -17,8 +42,10 @@ class HeelHookStrategyTest {
             val finding = findings.single()
             assertEquals("HEEL_HOOK", finding.type)
             assertEquals(ATTEMPT_ID, finding.attemptId)
-            assertEquals(frames.first().frameIndex, finding.startFrameIndex)
-            assertEquals(frames.last().frameIndex, finding.endFrameIndex)
+            val start = frames.single { it.frameIndex == finding.startFrameIndex }.timestamp
+            val end = frames.single { it.frameIndex == finding.endFrameIndex }.timestamp
+            assertTrue(start in 400L..600L) // Observed placement after the lift.
+            assertTrue(end in 1_100L..1_500L) // Confirmation, not the end of all heel use.
         }
     }
 
@@ -27,18 +54,19 @@ class HeelHookStrategyTest {
     fun classify_rejectsARaisedFootWithoutHeelOrientationEvidence() {
         val frames = hookSequence().map { frame ->
             val coordinates = frame.coordinates.copyOf()
-            coordinates[LEFT_FOOT_INDEX * PoseFrame.VALUES_PER_LANDMARK + 1] = 0.66f
+            coordinates[LEFT_FOOT_INDEX * PoseFrame.VALUES_PER_LANDMARK + 1] =
+                coordinates[LEFT_HEEL * PoseFrame.VALUES_PER_LANDMARK + 1] + 0.06f
             frame.copy(coordinates = coordinates)
         }
 
         assertTrue(HeelHookStrategy().classify(frames, ASPECT_RATIO).isEmpty())
     }
 
-    // A reliable ankle is insufficient when the actual heel becomes unavailable mid-sequence.
+    // A missing heel interrupts settling; shorter spans on either side must not be added together.
     @Test
-    fun classify_doesNotBridgeMissingHeelEvidence() {
+    fun classify_doesNotCountMissingHeelTimeAsContinuousSettling() {
         val frames = hookSequence().map { frame ->
-            if (frame.timestamp != 750L) frame else {
+            if (frame.timestamp != 1_000L) frame else {
                 val coordinates = frame.coordinates.copyOf()
                 coordinates[LEFT_HEEL * PoseFrame.VALUES_PER_LANDMARK + PRESENCE_OFFSET] = Float.NaN
                 frame.copy(coordinates = coordinates)
@@ -64,13 +92,16 @@ class HeelHookStrategyTest {
             landmark(12, pelvisX + 0.05f, pelvisY - TORSO_LENGTH)
             landmark(23, pelvisX - 0.05f, pelvisY)
             landmark(24, pelvisX + 0.05f, pelvisY)
-            landmark(25, 0.35f, 0.45f)
+            val lowering = TORSO_LENGTH * 1.5f * (1f - ((timestamp - 200L) / 300f).coerceIn(0f, 1f))
+            val kneeX = if (timestamp < 800L) (pelvisX - 0.05f + 0.27f) / 2f else 0.35f
+            val kneeY = if (timestamp < 800L) (pelvisY + 0.58f + lowering) / 2f else 0.45f
+            landmark(25, kneeX, kneeY)
             landmark(26, pelvisX + 0.05f, 0.8f)
-            landmark(27, 0.27f, 0.58f)
+            landmark(27, 0.27f, 0.58f + lowering)
             landmark(28, pelvisX + 0.05f, 0.95f)
-            landmark(LEFT_HEEL, 0.25f, 0.6f)
+            landmark(LEFT_HEEL, 0.25f, 0.6f + lowering)
             landmark(30, pelvisX + 0.05f, 0.97f)
-            landmark(LEFT_FOOT_INDEX, 0.28f, 0.55f)
+            landmark(LEFT_FOOT_INDEX, 0.28f, 0.55f + lowering)
             landmark(32, pelvisX + 0.1f, 0.97f)
             val frameIndex = FIRST_FRAME_INDEX + index
             PoseFrame("heel-frame-$frameIndex", ATTEMPT_ID, frameIndex, timestamp, coordinates)
@@ -81,7 +112,7 @@ class HeelHookStrategyTest {
         const val ASPECT_RATIO = 1f
         const val TORSO_LENGTH = 0.2f
         const val DURATION_MS = 1_500L
-        const val SAMPLE_INTERVAL_MS = 250L
+        const val SAMPLE_INTERVAL_MS = 100L
         const val FIRST_FRAME_INDEX = 10
         const val LEFT_HEEL = 29
         const val LEFT_FOOT_INDEX = 31
