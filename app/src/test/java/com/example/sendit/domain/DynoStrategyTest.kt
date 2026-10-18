@@ -8,39 +8,59 @@ class DynoStrategyTest {
     // A moving preparation followed by upward relocation and settled wrists produces one candidate.
     @Test
     fun classify_identifiesOneUpwardRelocationAfterAMovingPreparation() {
-        val frames = dynoSequence().map { frame ->
-            val coordinates = frame.coordinates.copyOf()
-            if (frame.timestamp <= 200L) {
-                // Preparatory adjustment exceeds the old stillness tolerance without losing tracking.
-                val adjustment = frame.timestamp / 200f * TORSO_LENGTH * 0.2f
-                for (landmark in listOf(15, 16, 27, 28)) {
-                    coordinates[landmark * PoseFrame.VALUES_PER_LANDMARK] += adjustment
+        for (support in listOf("none", "hand", "hand-and-foot")) {
+            val original = dynoSequence(if (support == "hand-and-foot") 50L else SAMPLE_INTERVAL_MS)
+            val frames = original.map { frame ->
+                val coordinates = frame.coordinates.copyOf()
+                if (frame.timestamp <= 200L) {
+                    // Preparatory adjustment exceeds the old stillness tolerance without losing tracking.
+                    val adjustment = frame.timestamp / 200f * TORSO_LENGTH * 0.2f
+                    for (landmark in listOf(15, 16, 27, 28)) {
+                        coordinates[landmark * PoseFrame.VALUES_PER_LANDMARK] += adjustment
+                    }
                 }
+                if (support != "none") {
+                    // A supported dynamic reach can keep one hand on its original hold.
+                    val wrist = 15 * PoseFrame.VALUES_PER_LANDMARK
+                    coordinates[wrist] = original.first().coordinates[wrist]
+                    coordinates[wrist + 1] = original.first().coordinates[wrist + 1]
+                }
+                if (support == "hand-and-foot") {
+                    val ankle = LEFT_ANKLE * PoseFrame.VALUES_PER_LANDMARK
+                    coordinates[ankle] = original.first().coordinates[ankle]
+                    coordinates[ankle + 1] = original.first().coordinates[ankle + 1]
+                }
+                if (support == "hand-and-foot" && frame.timestamp == 800L) {
+                    // Brief uncertainty after launch resets catch settling, not the observed launch.
+                    coordinates[LEFT_ANKLE * PoseFrame.VALUES_PER_LANDMARK + PRESENCE_OFFSET] = Float.NaN
+                }
+                frame.copy(coordinates = coordinates)
             }
-            frame.copy(coordinates = coordinates)
+
+            val findings = DynoStrategy().classify(frames, ASPECT_RATIO)
+
+            assertEquals(1, findings.size)
+            val finding = findings.single()
+            assertEquals("DYNO", finding.type)
+            assertEquals(ATTEMPT_ID, finding.attemptId)
+            val start = frames.single { it.frameIndex == finding.startFrameIndex }.timestamp
+            val end = frames.single { it.frameIndex == finding.endFrameIndex }.timestamp
+            assertTrue(start in 100L..300L) // Start near launch, rather than at the target reach.
+            assertTrue(end in 800L..1_200L) // Include observed settling after the reach at 600 ms.
         }
-
-        val findings = DynoStrategy().classify(frames, ASPECT_RATIO)
-
-        assertEquals(1, findings.size)
-        val finding = findings.single()
-        assertEquals("DYNO", finding.type)
-        assertEquals(ATTEMPT_ID, finding.attemptId)
-        val start = frames.single { it.frameIndex == finding.startFrameIndex }.timestamp
-        val end = frames.single { it.frameIndex == finding.endFrameIndex }.timestamp
-        assertTrue(start in 100L..300L) // Start near launch, rather than at the target reach.
-        assertTrue(end in 800L..1_200L) // Include observed settling after the reach at 600 ms.
     }
 
-    // A fast pelvis rise and reach are insufficient when one ankle remains at its setup position.
+    // A supported reach with both feet planted is insufficient, despite fast body/hand motion.
     @Test
-    fun classify_rejectsAFastReachWithOnePlantedAnkle() {
+    fun classify_rejectsAFastReachWithBothFeetPlanted() {
         val frames = dynoSequence()
         val ankleOffset = LEFT_ANKLE * PoseFrame.VALUES_PER_LANDMARK
         val initialAnkleY = frames.first().coordinates[ankleOffset + 1]
         val supportedReach = frames.map { frame ->
             val coordinates = frame.coordinates.copyOf()
             coordinates[ankleOffset + 1] = initialAnkleY
+            val otherAnkle = 28 * PoseFrame.VALUES_PER_LANDMARK
+            coordinates[otherAnkle + 1] = frames.first().coordinates[otherAnkle + 1]
             frame.copy(coordinates = coordinates)
         }
 
@@ -63,7 +83,7 @@ class DynoStrategyTest {
 
     // Setup ends at 200 ms. The pelvis and all four limb endpoints rise one torso length by 600 ms.
     // The target wrists then remain still.
-    private fun dynoSequence() = (0L..1_200L step SAMPLE_INTERVAL_MS).mapIndexed { index, timestamp ->
+    private fun dynoSequence(sampleIntervalMs: Long = SAMPLE_INTERVAL_MS) = (0L..1_200L step sampleIntervalMs).mapIndexed { index, timestamp ->
         val coordinates = FloatArray(PoseFrame.LANDMARK_COUNT * PoseFrame.VALUES_PER_LANDMARK) { Float.NaN }
         val rise = (timestamp - 200L).coerceIn(0L, 400L) / 400f * TORSO_LENGTH
         fun landmark(id: Int, x: Float, y: Float) {

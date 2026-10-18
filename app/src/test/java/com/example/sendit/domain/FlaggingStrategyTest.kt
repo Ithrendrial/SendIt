@@ -8,8 +8,9 @@ class FlaggingStrategyTest {
     // Either screen direction can contain an outside flag; preserve the stored frame boundaries.
     @Test
     fun classify_returnsOneCandidateForASustainedOutsideFlagOnEitherSide() {
-        for (mirrored in listOf(false, true)) {
-            val frames = sequence(mirrored = mirrored)
+        for (mirrored in listOf(false, true)) for (supportX in listOf(0.52f, 0.59f)) {
+            // A supporting foot need not sit directly underneath the pelvis.
+            val frames = sequence(mirrored = mirrored, supportX = supportX)
 
             val findings = FlaggingStrategy().classify(frames, ASPECT_RATIO)
 
@@ -52,7 +53,7 @@ class FlaggingStrategyTest {
 
     // A straight left leg extends outside; the opposite ankle stays near the pelvis horizontally.
     // Mirroring reverses image x, including hip ordering, without changing anatomical landmark IDs.
-    private fun sequence(mirrored: Boolean = false) =
+    private fun sequence(mirrored: Boolean = false, supportX: Float = 0.52f) =
         (0L..2_000L step SAMPLE_INTERVAL_MS).mapIndexed { index, timestamp ->
             val coordinates = FloatArray(PoseFrame.LANDMARK_COUNT * PoseFrame.VALUES_PER_LANDMARK) { Float.NaN }
             fun landmark(id: Int, x: Float, y: Float) {
@@ -65,7 +66,7 @@ class FlaggingStrategyTest {
             landmark(25, 0.3f, 0.7f)
             landmark(RIGHT_KNEE, 0.54f, 0.7f)
             landmark(LEFT_ANKLE, 0.15f, 0.9f)
-            landmark(RIGHT_ANKLE, 0.52f, 0.9f)
+            landmark(RIGHT_ANKLE, supportX, 0.9f)
             val frameIndex = FIRST_FRAME_INDEX + index
             PoseFrame("frame-$frameIndex", ATTEMPT_ID, frameIndex, timestamp, coordinates)
         }

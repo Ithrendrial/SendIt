@@ -57,15 +57,21 @@ class HeelHookStrategyTest {
     // A toe-down raised foot and a continuously moving high foot are insufficient for a heel hook.
     @Test
     fun classify_rejectsRaisedFeetWithoutOrientationOrSettledPlacementEvidence() {
-        for (movingFoot in listOf(false, true)) {
+        for (variant in listOf("toe-down", "moving-foot", "collapsed-foot")) {
             val frames = hookSequence().map { frame ->
                 val coordinates = frame.coordinates.copyOf()
-                if (movingFoot) {
+                if (variant == "moving-foot") {
                     val heel = LEFT_HEEL * PoseFrame.VALUES_PER_LANDMARK
                     val toe = LEFT_FOOT_INDEX * PoseFrame.VALUES_PER_LANDMARK
                     val travel = TORSO_LENGTH * (frame.timestamp - 500L).coerceAtLeast(0L) / 100f * 0.3f
                     coordinates[heel] += travel
                     coordinates[toe] += travel
+                } else if (variant == "collapsed-foot") {
+                    // A tiny projected foot cannot provide a reliable heel/toe orientation.
+                    val heel = LEFT_HEEL * PoseFrame.VALUES_PER_LANDMARK
+                    val toe = LEFT_FOOT_INDEX * PoseFrame.VALUES_PER_LANDMARK
+                    coordinates[toe] = coordinates[heel] + TORSO_LENGTH * 0.08f
+                    coordinates[toe + 1] = coordinates[heel + 1] - TORSO_LENGTH * 0.06f
                 } else {
                     coordinates[LEFT_FOOT_INDEX * PoseFrame.VALUES_PER_LANDMARK + 1] =
                         coordinates[LEFT_HEEL * PoseFrame.VALUES_PER_LANDMARK + 1] + 0.06f

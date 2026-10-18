@@ -2,14 +2,18 @@ package com.example.sendit.domain
 
 import java.util.UUID
 
-// Pose-only upward relocation followed by settled wrists; this does not prove flight or a catch.
+// Pose-only dynamic rise followed by a settled reaching hand; this does not prove flight or a catch.
 class DynoStrategy : ClassificationStrategy {
     override fun classify(frames: List<PoseFrame>, aspectRatio: Float): List<Finding> {
         val measurements = PoseMeasurements(frames, aspectRatio)
         val scale = measurements.scale ?: return emptyList()
         val poses = frames.indices.map { index ->
             if (!measurements.isUsable(index)) null else {
-                val limbs = LIMB_IDS.map { measurements.landmarkAt(index, it) }
+                val limbs = LIMB_IDS.map { id ->
+                    if (id == LEFT_WRIST || id == RIGHT_WRIST) {
+                        measurements.landmarkAt(index, id, MIN_WRIST_VISIBILITY, MIN_WRIST_PRESENCE)
+                    } else measurements.landmarkAt(index, id)
+                }
                 if (limbs.any { it == null }) null else {
                     val leftHip = measurements.landmarkAt(index, LEFT_HIP)!!
                     val rightHip = measurements.landmarkAt(index, RIGHT_HIP)!!
@@ -31,15 +35,26 @@ class DynoStrategy : ClassificationStrategy {
             return true
         }
 
-        fun settledEnd(start: Int): Int? {
-            val anchor = poses[start] ?: return null
-            for (index in start + 1 until frames.size) {
-                if (!continuous(index - 1, index)) return null
-                val pose = poses[index] ?: return null
-                if (WRIST_POSITIONS.any {
-                    measurements.distance(anchor.limbs[it], pose.limbs[it]) / scale > MAX_STABLE_EXCURSION
-                }) return null
-                if (frames[index].timestamp - frames[start].timestamp >= SETTLING_MS) return index
+        // A reach may continue after launch. Short uncertainty resets settling, not the observed launch.
+        fun settledEnd(start: Int, wrist: Int, initialWristY: Float): Int? {
+            var lastReliable = start
+            for (anchorIndex in start until frames.size) {
+                if (frames[anchorIndex].timestamp - frames[start].timestamp > MAX_CATCH_WAIT_MS) return null
+                if (anchorIndex > start && !measurements.isFrameSequenceContinuous(anchorIndex - 1, anchorIndex)) return null
+                val anchor = poses[anchorIndex]
+                if (anchor == null) {
+                    if (frames[anchorIndex].timestamp - frames[lastReliable].timestamp > MAX_PENDING_GAP_MS) return null
+                    continue
+                }
+                if (frames[anchorIndex].timestamp - frames[lastReliable].timestamp > MAX_PENDING_GAP_MS) return null
+                lastReliable = anchorIndex
+                if ((initialWristY - anchor.limbs[wrist].y) / scale < MIN_WRIST_RISE) continue
+                for (index in anchorIndex + 1 until frames.size) {
+                    if (!measurements.isFrameSequenceContinuous(index - 1, index)) return null
+                    val current = poses[index] ?: break
+                    if (measurements.distance(anchor.limbs[wrist], current.limbs[wrist]) / scale > MAX_STABLE_EXCURSION) break
+                    if (frames[index].timestamp - frames[anchorIndex].timestamp >= SETTLING_MS) return index
+                }
             }
             return null
         }
@@ -60,14 +75,13 @@ class DynoStrategy : ClassificationStrategy {
                 val pose = poses[target]!! // continuous requires reliable observations on both sides.
                 val rise = (setup.pelvisY - pose.pelvisY) / scale
                 val speed = rise / (elapsedMs / MILLIS_PER_SECOND)
-                val allLimbsMoved = pose.limbs.indices.all {
-                    measurements.distance(setup.limbs[it], pose.limbs[it]) / scale >= MIN_LIMB_RELOCATION
+                val footRose = ANKLE_POSITIONS.any {
+                    (setup.limbs[it].y - pose.limbs[it].y) / scale >= MIN_ANKLE_RISE
                 }
-                val bothWristsRose = WRIST_POSITIONS.all {
-                    (setup.limbs[it].y - pose.limbs[it].y) / scale >= MIN_WRIST_RISE
-                }
-                if (rise < MIN_PELVIS_RISE || speed < MIN_UPWARD_SPEED || !allLimbsMoved || !bothWristsRose) continue
-                eventEnd = settledEnd(target)
+                val reachingWrist = WRIST_POSITIONS.maxBy { setup.limbs[it].y - pose.limbs[it].y }
+                val wristRise = (setup.limbs[reachingWrist].y - pose.limbs[reachingWrist].y) / scale
+                if (rise < MIN_PELVIS_RISE || speed < MIN_UPWARD_SPEED || !footRose || wristRise < MIN_WRIST_RISE) continue
+                eventEnd = settledEnd(target, reachingWrist, setup.limbs[reachingWrist].y)
                 if (eventEnd != null) break
             }
             if (eventEnd != null) {
@@ -96,13 +110,20 @@ class DynoStrategy : ClassificationStrategy {
         const val SETTLING_MS = 200L
         const val MAX_STABLE_EXCURSION = 0.1f // Torso lengths from the initial catch observation.
         const val MIN_PELVIS_RISE = 0.5f // Torso lengths upwards in image coordinates.
-        const val MIN_UPWARD_SPEED = 1f // Torso lengths per second across the launch.
-        const val MIN_LIMB_RELOCATION = 0.25f // Torso lengths from setup, for each wrist and ankle.
-        const val MIN_WRIST_RISE = 0.5f // Torso lengths above each wrist's setup position.
+        const val MIN_UPWARD_SPEED = 2f // Torso lengths per second across the launch.
+        const val MIN_ANKLE_RISE = 0.25f // At least one observed foot rises; this does not prove release.
+        const val MIN_WRIST_RISE = 0.5f // At least one reaching hand; supported dynamic moves are allowed.
+        const val MAX_CATCH_WAIT_MS = 800L
+        const val MAX_PENDING_GAP_MS = 150L
+        const val MIN_WRIST_VISIBILITY = 0f // Occluded model estimates need strong presence and motion corroboration.
+        const val MIN_WRIST_PRESENCE = 0.9f
+        const val LEFT_WRIST = 15
+        const val RIGHT_WRIST = 16
         const val MILLIS_PER_SECOND = 1_000f
         const val LEFT_HIP = 23
         const val RIGHT_HIP = 24
         val LIMB_IDS = listOf(15, 16, 27, 28)
+        val ANKLE_POSITIONS = 2..3
         val WRIST_POSITIONS = 0..1 // First two entries of LIMB_IDS.
     }
 }

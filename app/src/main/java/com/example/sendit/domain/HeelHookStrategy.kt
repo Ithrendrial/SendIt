@@ -100,6 +100,10 @@ class HeelHookStrategy : ClassificationStrategy {
         val pelvis = measurements.pelvisAt(index) ?: return null
         val heel = measurements.landmarkAt(index, LEFT_HEEL + leg) ?: return null
         val toe = measurements.landmarkAt(index, LEFT_FOOT_INDEX + leg) ?: return null
+        // Short projected feet need a clear vertical orientation; a tiny slanted vector is unstable.
+        val footLength = measurements.distance(heel, toe)
+        if (footLength / requireNotNull(measurements.scale) < MIN_PROJECTED_FOOT_LENGTH &&
+            (footLength <= 0f || (heel.y - toe.y) / footLength < MIN_SHORT_FOOT_VERTICAL_FRACTION)) return null
         val hip = measurements.landmarkAt(index, LEFT_HIP + leg)
         val knee = measurements.landmarkAt(index, LEFT_KNEE + leg)
         val ankle = measurements.landmarkAt(index, LEFT_ANKLE + leg)
@@ -138,8 +142,10 @@ class HeelHookStrategy : ClassificationStrategy {
         const val MAX_PENDING_GAP_MS = 500L
         const val MIN_SETTLING_MS = 500L
         const val MIN_HEEL_LIFT = 0.35f // Torso lengths: image rise and rise relative to pelvis.
-        const val MAX_HEEL_BELOW_PELVIS = 0.5f // Torso lengths at placement and confirmation.
-        const val REARM_HEEL_BELOW_PELVIS = 0.75f // Separate threshold avoids duplicate events while raised.
+        const val MAX_HEEL_BELOW_PELVIS = 0.75f // Torso lengths at placement and confirmation.
+        const val REARM_HEEL_BELOW_PELVIS = 0.75f // A new event needs the foot lowered, followed by a new observed lift.
+        const val MIN_PROJECTED_FOOT_LENGTH = 0.16f // Torso lengths, a pose-orientation quality check.
+        const val MIN_SHORT_FOOT_VERTICAL_FRACTION = 0.75f
         const val MIN_TOE_RISE = 0.05f // Torso lengths above heel.
         const val MAX_HEEL_EXCURSION = 0.25f // Torso lengths across each filtered observation window.
         const val MIN_KNEE_FLEXION_DEGREES = 20f // Change during use, not a prescribed knee angle.

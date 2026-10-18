@@ -52,9 +52,9 @@ class FlaggingStrategy : ClassificationStrategy {
 
     private fun outsideFlag(measurements: PoseMeasurements, index: Int, scale: Float): Candidate? {
         if (!measurements.isUsable(index)) return null
-        val hips = HIP_IDS.map { measurements.landmarkAt(index, it) ?: return null }
-        val knees = KNEE_IDS.map { measurements.landmarkAt(index, it) ?: return null }
-        val ankles = ANKLE_IDS.map { measurements.landmarkAt(index, it) ?: return null }
+        val hips = HIP_IDS.map { measurements.landmarkAt(index, it, MIN_LEG_VISIBILITY, MIN_LEG_PRESENCE) ?: return null }
+        val knees = KNEE_IDS.map { measurements.landmarkAt(index, it, MIN_LEG_VISIBILITY, MIN_LEG_PRESENCE) ?: return null }
+        val ankles = ANKLE_IDS.map { measurements.landmarkAt(index, it, MIN_LEG_VISIBILITY, MIN_LEG_PRESENCE) ?: return null }
         if (hips[0].x == hips[1].x) return null // Screen-side direction is ambiguous.
         val pelvisX = (hips[0].x + hips[1].x) / 2f
         for (leg in hips.indices) {
@@ -63,6 +63,7 @@ class FlaggingStrategy : ClassificationStrategy {
             val extension = (ankles[leg].x - hips[leg].x) * direction / scale
             val supportOffset = abs(ankles[otherLeg].x - pelvisX) / scale
             if (extension >= MIN_OUTSIDE_EXTENSION && supportOffset <= MAX_SUPPORT_OFFSET &&
+                extension >= abs(hips[leg].y - ankles[leg].y) / scale * MIN_LATERAL_TO_VERTICAL_RATIO &&
                 measurements.jointAngle(hips[leg], knees[leg], ankles[leg]) >= MIN_KNEE_ANGLE_DEGREES
             ) return Candidate(leg, ankles[otherLeg])
         }
@@ -73,11 +74,14 @@ class FlaggingStrategy : ClassificationStrategy {
 
     private companion object {
         // Provisional engineering estimates; rationale is in the workspace classification evidence.
-        const val MIN_OUTSIDE_EXTENSION = 0.75f // Torso lengths outward from the same-side hip.
-        const val MAX_SUPPORT_OFFSET = 0.35f // Torso lengths horizontally from the pelvis.
-        const val MAX_SUPPORT_EXCURSION = 0.15f // Torso lengths from the interval's ankle anchor.
+        const val MIN_OUTSIDE_EXTENSION = 0.5f // Torso lengths outward from the same-side hip.
+        const val MAX_SUPPORT_OFFSET = 0.55f // Torso lengths horizontally from the pelvis.
+        const val MAX_SUPPORT_EXCURSION = 0.25f // Torso lengths from the interval's ankle anchor.
         const val MIN_KNEE_ANGLE_DEGREES = 150.0
-        const val MIN_FLAGGING_MS = 1_000L
+        const val MIN_FLAGGING_MS = 900L
+        const val MIN_LATERAL_TO_VERTICAL_RATIO = 0.6f // Excludes mostly downward hanging legs.
+        const val MIN_LEG_VISIBILITY = 0f // Occluded estimates need strong presence and sustained geometry.
+        const val MIN_LEG_PRESENCE = 0.9f
         val HIP_IDS = listOf(23, 24)
         val KNEE_IDS = listOf(25, 26)
         val ANKLE_IDS = listOf(27, 28)
