@@ -7,6 +7,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.Relation
 import com.example.sendit.domain.PoseFrame
+import com.example.sendit.domain.Finding
 
 // Attempt table info
 @Entity(
@@ -33,5 +34,6 @@ data class AttemptEntity(
 data class AttemptWithFrames(
     @Embedded val attempt: AttemptEntity,
     @Relation(parentColumn = "id", entityColumn = "attemptId") val frames: List<PoseFrame>,
-    @Relation(parentColumn = "routeId", entityColumn = "id") val route: RouteEntity
+    @Relation(parentColumn = "routeId", entityColumn = "id") val route: RouteEntity,
+    @Relation(parentColumn = "id", entityColumn = "attemptId") val findings: List<Finding> = emptyList()
 )

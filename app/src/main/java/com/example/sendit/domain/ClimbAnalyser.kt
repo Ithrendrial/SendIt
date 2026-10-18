@@ -15,7 +15,7 @@ class ClimbAnalyser(
     private val extractor: PoseExtractor,
     private val repository: ClimbRepository
 ) {
-    // Extracts and saves the reconstruction. Other analysis features will be added later.
+    // Extracts the reconstruction, runs the implemented strategies, and saves their findings.
     suspend fun processAttempt(
         attemptId: String, routeId: String, video: Uri, onProgress: suspend (Int) -> Unit = {}
     ) {
@@ -23,7 +23,13 @@ class ClimbAnalyser(
         require(attempt.routeId == routeId)
         val aspectRatio = readAspectRatio(video)
         val frames = extractor.extract(PoseExtractor.VideoInput(video.toString(), attemptId), onProgress)
-        repository.saveAnalysis(attemptId, frames, aspectRatio)
+        val findings = withContext(Dispatchers.Default) {
+            classify(frames, aspectRatio) + classify(frames, aspectRatio, CruxStrategy()) +
+                classify(frames, aspectRatio, FlaggingStrategy()) + classify(frames, aspectRatio, DynoStrategy()) +
+                classify(frames, aspectRatio, HeelHookStrategy()) + classify(frames, aspectRatio, MantleStrategy()) +
+                classify(frames, aspectRatio, HighStepStrategy())
+        }
+        repository.saveAnalysis(attemptId, frames, aspectRatio, findings)
     }
 
     // Reads the video proportions, including portrait videos stored with a rotation tag.
@@ -36,5 +42,14 @@ class ClimbAnalyser(
             require(width != null && height != null && width > 0 && height > 0) { "Cannot read video dimensions" }
             if (rotation == 90 || rotation == 270) height / width else width / height
         }
+    }
+
+    companion object {
+        // Delegates to the chosen classification strategy.
+        fun classify(
+            frames: List<PoseFrame>,
+            aspectRatio: Float,
+            strategy: ClassificationStrategy = HesitationStrategy()
+        ): List<Finding> = strategy.classify(frames, aspectRatio)
     }
 }

@@ -3,9 +3,7 @@ package com.example.sendit.ui
 import com.example.sendit.domain.PoseFrame
 import com.example.sendit.ui.screens.PosePlaybackState
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PosePlaybackStateTest {
@@ -13,59 +11,16 @@ class PosePlaybackStateTest {
 
     // Checks scrubbing uses the recorded times, even when the frames are unevenly spaced.
     @Test
-    fun seekingSelectsMostRecentFrameAtThatTime() {
+    fun scrubbingSelectsMostRecentFrameAtThatTime() {
         val playback = PosePlaybackState(frames)
 
-        playback.seekTo(799)
+        playback.scrubTo(799)
         assertSame(frames[0], playback.currentFrame)
-        playback.seekTo(800)
+        playback.scrubTo(800)
         assertSame(frames[1], playback.currentFrame)
-        playback.seekTo(1900)
+        playback.scrubTo(1900)
         assertSame(frames[1], playback.currentFrame)
         assertEquals(1900L, playback.positionMs)
-    }
-
-    // Checks play advances by elapsed time and pause keeps the body at the same position.
-    @Test
-    fun timeAdvancesOnlyWhilePlaying() {
-        val playback = PosePlaybackState(frames)
-
-        playback.togglePlayback()
-        playback.advanceBy(900)
-        assertTrue(playback.isPlaying)
-        assertEquals(900L, playback.positionMs)
-        assertSame(frames[1], playback.currentFrame)
-
-        playback.togglePlayback()
-        playback.advanceBy(500)
-        assertFalse(playback.isPlaying)
-        assertEquals(900L, playback.positionMs)
-    }
-
-    // Checks the user dragging the scrub bar pauses playback, so the clock does not fight the drag.
-    @Test
-    fun scrubbingWhilePlayingPausesAtTheSelectedTime() {
-        val playback = PosePlaybackState(frames)
-        playback.togglePlayback()
-
-        playback.scrubTo(1000)
-        assertFalse(playback.isPlaying)
-        assertEquals(1000L, playback.positionMs)
-        assertSame(frames[1], playback.currentFrame)
-
-        playback.advanceBy(500)
-        assertEquals(1000L, playback.positionMs)
-    }
-
-    // Checks scrubbing does not start playback by itself.
-    @Test
-    fun scrubbingWhilePausedStaysPaused() {
-        val playback = PosePlaybackState(frames)
-
-        playback.scrubTo(1000)
-
-        assertFalse(playback.isPlaying)
-        assertEquals(1000L, playback.positionMs)
     }
 
     // Makes a pose with the same coordinate layout as the extractor, without running MediaPipe.

@@ -9,6 +9,7 @@ import com.example.sendit.data.AttemptEntity
 import com.example.sendit.data.ClimbRepository
 import com.example.sendit.data.RouteEntity
 import com.example.sendit.domain.PoseFrame
+import com.example.sendit.domain.Finding
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
@@ -18,6 +19,8 @@ class AttemptDetailViewModel(repository: ClimbRepository, attemptId: String) : V
     var route by mutableStateOf<RouteEntity?>(null)
         private set
     var poseFrames by mutableStateOf<List<PoseFrame>>(emptyList())
+        private set
+    var findings by mutableStateOf<List<Finding>>(emptyList())
         private set
     var isLoading by mutableStateOf(true)
         private set
@@ -36,6 +39,7 @@ class AttemptDetailViewModel(repository: ClimbRepository, attemptId: String) : V
                     selectedAttempt = saved?.attempt
                     route = saved?.route
                     poseFrames = saved?.frames.orEmpty().sortedBy { it.frameIndex }
+                    findings = saved?.findings.orEmpty()
                     errorMessage = if (saved?.attempt?.videoAspectRatio == null) "This attempt has no saved reconstruction." else null
                     isLoading = false
                 }

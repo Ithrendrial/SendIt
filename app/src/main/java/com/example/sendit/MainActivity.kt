@@ -94,6 +94,7 @@ private fun SendItApp(form: AttemptFormViewModel, repository: ClimbRepository, m
                     val route = detail.route!!
                     AttemptDetailScreen(
                         poseFrames = detail.poseFrames,
+                        findings = detail.findings,
                         videoAspectRatio = attempt.videoAspectRatio!!,
                         heading = AttemptHeading(route.name, route.location, route.grade, attempt.outcome),
                         onBack = form::dismissResult

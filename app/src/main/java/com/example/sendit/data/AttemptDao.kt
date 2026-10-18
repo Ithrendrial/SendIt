@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 import com.example.sendit.domain.PoseFrame
+import com.example.sendit.domain.Finding
 
 @Dao
 interface AttemptDao {
@@ -38,6 +39,12 @@ interface AttemptDao {
     // Replaces only this attempt's frames when processing is repeated.
     @Query("DELETE FROM pose_frames WHERE attemptId = :attemptId")
     suspend fun deleteFrames(attemptId: String)
+
+    @Insert
+    suspend fun insertFindings(findings: List<Finding>)
+
+    @Query("DELETE FROM findings WHERE attemptId = :attemptId")
+    suspend fun deleteFindings(attemptId: String)
 
     // Removes an unfinished attempt; its pose frames go with it.
     @Query("DELETE FROM attempts WHERE id = :id")
