@@ -1,6 +1,7 @@
 package com.example.sendit.domain
 
 import android.content.ContentValues
+import android.graphics.Color
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -66,6 +67,33 @@ class PoseExtractionInstrumentedTest {
         }
     }
 
+    // A generated AV1 clip moves a white square rightward; later timestamps must show later positions.
+    @Test
+    fun frameReader_preservesMotionBetweenAv1Keyframes() = runBlocking {
+        withTestVideo("frame_motion_av1_fragmented.mp4") { uri ->
+            val positions = mutableListOf<Float>()
+            VideoFrameReader.open(context, uri).use { reader ->
+                while (true) {
+                    val frame = reader.next() ?: break
+                    frame.use {
+                        if (frame.timestampMs in AV1_SAMPLE_TIMESTAMPS_MS) {
+                            val image = frame.bitmap
+                            val brightColumns = (0 until image.width).filter { x ->
+                                Color.red(image.getPixel(x, image.height / 2)) > BRIGHT_PIXEL_THRESHOLD
+                            }
+                            assertTrue("Moving square must be visible at ${frame.timestampMs} ms", brightColumns.isNotEmpty())
+                            positions += brightColumns.average().toFloat() / image.width
+                        }
+                    }
+                }
+            }
+            assertEquals(AV1_SAMPLE_TIMESTAMPS_MS.size, positions.size)
+            positions.zipWithNext().forEach { (earlier, later) ->
+                assertTrue("Later video frames must move the square rightward: $positions", later - earlier > MIN_SQUARE_MOVEMENT)
+            }
+        }
+    }
+
     // Checks a missing video causes an error instead of returning an empty successful result.
     @Test
     fun extract_unreadableVideoFailsInsteadOfReturningSuccessfulEmptyResult() {
@@ -102,6 +130,10 @@ class PoseExtractionInstrumentedTest {
     }
 
     private companion object {
+        val AV1_SAMPLE_TIMESTAMPS_MS = setOf(500L, 1_500L, 2_500L)
+        const val BRIGHT_PIXEL_THRESHOLD = 150
+        // The fixture moves ~80 pixels/second in a 320-pixel-wide image; allow compression tolerance.
+        const val MIN_SQUARE_MOVEMENT = 0.15f
         val FIXTURE_TIMESTAMPS_MS = listOf(0L, 80L, 200L, 320L, 500L, 720L, 900L, 1080L, 1260L)
         const val PERSON_FRAME_COUNT = 6
         const val VALUES_PER_LANDMARK = 5

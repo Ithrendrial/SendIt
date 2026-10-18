@@ -16,7 +16,7 @@ import kotlinx.coroutines.ensureActive
 internal class VideoFrameReader private constructor(
     private val retriever: MediaMetadataRetriever,
     private val presentationTimesUs: List<Long>,
-    private val useFrameIndices: Boolean
+    private val sequentialDecoder: SequentialVideoDecoder?
 ) : Closeable {
     class Frame(val timestampMs: Long, val bitmap: Bitmap) : Closeable {
         // Frees the frame's image memory once it is no longer needed.
@@ -32,15 +32,9 @@ internal class VideoFrameReader private constructor(
         if (index == presentationTimesUs.size) return null
         val frameIndex = index++
         val timeUs = presentationTimesUs[frameIndex]
-        // Reading consecutive indices lets Android reuse its decoder. Both methods apply rotation.
-        val decoded = (if (useFrameIndices) {
-            retriever.getFrameAtIndex(frameIndex)
-        } else {
-            retriever.getScaledFrameAtTime(
-                timeUs, MediaMetadataRetriever.OPTION_CLOSEST,
-                MAX_FRAME_DIMENSION_PX, MAX_FRAME_DIMENSION_PX
-            )
-        }) ?: throw IOException("Cannot decode video frame at ${timeUs / MICROSECONDS_PER_MILLISECOND} ms")
+        // Indexed reads are fast when metadata matches; otherwise decode actual frames in order.
+        val decoded = (sequentialDecoder?.read(timeUs) ?: retriever.getFrameAtIndex(frameIndex))
+            ?: throw IOException("Cannot decode video frame at ${timeUs / MICROSECONDS_PER_MILLISECOND} ms")
         // Indexed frames are full size, so shrink each one before passing it to MediaPipe.
         val scale = MAX_FRAME_DIMENSION_PX.toFloat() / maxOf(decoded.width, decoded.height)
         val scaled = if (scale >= 1f) decoded else {
@@ -67,7 +61,9 @@ internal class VideoFrameReader private constructor(
     }
 
     // Releases Android's video reader when processing ends.
-    override fun close() = retriever.release()
+    override fun close() {
+        try { sequentialDecoder?.close() } finally { retriever.release() }
+    }
 
     companion object {
         // Bounds inference image memory while preserving the source aspect ratio.
@@ -83,10 +79,15 @@ internal class VideoFrameReader private constructor(
                 val timestamps = readPresentationTimes(context, uri)
                 currentCoroutineContext().ensureActive()
                 retriever.setDataSource(context, uri)
-                // Fall back to timestamp reads if frame indices cannot match our filtered timestamps.
+                // Timestamp retrieval can repeat sync frames for fragmented videos; decode sequentially instead.
                 val frameCount = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)
                     ?.toIntOrNull()
-                return VideoFrameReader(retriever, timestamps, useFrameIndices = frameCount == timestamps.size)
+                val decoder = if (frameCount == timestamps.size) null else SequentialVideoDecoder.open(
+                    context, uri, MAX_FRAME_DIMENSION_PX,
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0,
+                    currentCoroutineContext()
+                )
+                return VideoFrameReader(retriever, timestamps, decoder)
             } catch (failure: Exception) {
                 try {
                     retriever.release()
