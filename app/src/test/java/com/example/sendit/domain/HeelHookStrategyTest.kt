@@ -5,61 +5,76 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HeelHookStrategyTest {
-    // A raised heel settles despite one tracking spike, then leg flexion corroborates use.
+    // Retain the spike regression, and allow modest heel movement/rotation after placement.
     @Test
-    fun classify_identifiesHeelPlacementAndUseDespiteATrackingSpike() {
+    fun classify_identifiesHeelPlacementAndUseDespiteTrackingNoiseAndFootRotation() {
         for (rightLeg in listOf(false, true)) {
-            val original = hookSequence(rightLeg)
-            val frames = original.map { frame ->
-                val coordinates = frame.coordinates.copyOf()
-                // Keep the body stationary: stabilising hooks need not pull the pelvis closer.
-                for (id in listOf(11, 12, 23, 24)) {
-                    val offset = id * PoseFrame.VALUES_PER_LANDMARK
-                    coordinates[offset] = original.first().coordinates[offset]
-                    coordinates[offset + 1] = original.first().coordinates[offset + 1]
-                }
-                val hip = (if (rightLeg) 24 else 23) * PoseFrame.VALUES_PER_LANDMARK
-                val knee = (if (rightLeg) 26 else 25) * PoseFrame.VALUES_PER_LANDMARK
-                val ankle = (if (rightLeg) 28 else 27) * PoseFrame.VALUES_PER_LANDMARK
-                if (frame.timestamp < 800L) {
-                    coordinates[knee] = (coordinates[hip] + coordinates[ankle]) / 2f
-                    coordinates[knee + 1] = (coordinates[hip + 1] + coordinates[ankle + 1]) / 2f
-                }
-                if (frame.timestamp == 1_000L) {
+            for (rollingHeel in listOf(false, true)) {
+                val original = hookSequence(rightLeg)
+                val frames = original.map { frame ->
+                    val coordinates = frame.coordinates.copyOf()
+                    // Stabilising hooks need not pull the pelvis closer.
+                    for (id in listOf(11, 12, 23, 24)) {
+                        val offset = id * PoseFrame.VALUES_PER_LANDMARK
+                        coordinates[offset] = original.first().coordinates[offset]
+                        coordinates[offset + 1] = original.first().coordinates[offset + 1]
+                    }
+                    val hip = (if (rightLeg) 24 else 23) * PoseFrame.VALUES_PER_LANDMARK
+                    val knee = (if (rightLeg) 26 else 25) * PoseFrame.VALUES_PER_LANDMARK
+                    val ankle = (if (rightLeg) 28 else 27) * PoseFrame.VALUES_PER_LANDMARK
+                    if (frame.timestamp < 800L) {
+                        coordinates[knee] = (coordinates[hip] + coordinates[ankle]) / 2f
+                        coordinates[knee + 1] = (coordinates[hip + 1] + coordinates[ankle + 1]) / 2f
+                    }
                     val heel = (if (rightLeg) 30 else LEFT_HEEL) * PoseFrame.VALUES_PER_LANDMARK
-                    coordinates[heel] += TORSO_LENGTH * 0.25f
+                    if (rollingHeel && frame.timestamp >= 500L) {
+                        val shift = if (frame.timestamp in 900L..1_200L) -0.12f else 0.12f
+                        coordinates[heel] += TORSO_LENGTH * shift
+                    }
+                    if (frame.timestamp == 1_000L) coordinates[heel] += TORSO_LENGTH * 0.25f
+                    val rotationStarts = if (rollingHeel) 900L else 1_400L
+                    if (frame.timestamp >= rotationStarts) {
+                        val toe = (if (rightLeg) 32 else LEFT_FOOT_INDEX) * PoseFrame.VALUES_PER_LANDMARK
+                        coordinates[toe + 1] = 0.66f // Actual observed rotation, not missing toe evidence.
+                    }
+                    frame.copy(coordinates = coordinates)
                 }
-                if (frame.timestamp >= 1_400L) {
-                    val toe = (if (rightLeg) 32 else LEFT_FOOT_INDEX) * PoseFrame.VALUES_PER_LANDMARK
-                    coordinates[toe + 1] = 0.66f // Toe-up placement can roll to a different orientation.
+
+                val findings = HeelHookStrategy().classify(frames, ASPECT_RATIO)
+
+                assertEquals("rightLeg=$rightLeg, rollingHeel=$rollingHeel", 1, findings.size)
+                val finding = findings.single()
+                assertEquals("HEEL_HOOK", finding.type)
+                assertEquals(ATTEMPT_ID, finding.attemptId)
+                val start = frames.single { it.frameIndex == finding.startFrameIndex }.timestamp
+                val end = frames.single { it.frameIndex == finding.endFrameIndex }.timestamp
+                assertTrue(start in 400L..600L)
+                assertTrue(end in 1_100L..1_500L) // Confirmation, not the end of all heel use.
+            }
+        }
+    }
+
+    // A toe-down raised foot and a continuously moving high foot are insufficient for a heel hook.
+    @Test
+    fun classify_rejectsRaisedFeetWithoutOrientationOrSettledPlacementEvidence() {
+        for (movingFoot in listOf(false, true)) {
+            val frames = hookSequence().map { frame ->
+                val coordinates = frame.coordinates.copyOf()
+                if (movingFoot) {
+                    val heel = LEFT_HEEL * PoseFrame.VALUES_PER_LANDMARK
+                    val toe = LEFT_FOOT_INDEX * PoseFrame.VALUES_PER_LANDMARK
+                    val travel = TORSO_LENGTH * (frame.timestamp - 500L).coerceAtLeast(0L) / 100f * 0.3f
+                    coordinates[heel] += travel
+                    coordinates[toe] += travel
+                } else {
+                    coordinates[LEFT_FOOT_INDEX * PoseFrame.VALUES_PER_LANDMARK + 1] =
+                        coordinates[LEFT_HEEL * PoseFrame.VALUES_PER_LANDMARK + 1] + 0.06f
                 }
                 frame.copy(coordinates = coordinates)
             }
 
-            val findings = HeelHookStrategy().classify(frames, ASPECT_RATIO)
-
-            assertEquals(1, findings.size)
-            val finding = findings.single()
-            assertEquals("HEEL_HOOK", finding.type)
-            assertEquals(ATTEMPT_ID, finding.attemptId)
-            val start = frames.single { it.frameIndex == finding.startFrameIndex }.timestamp
-            val end = frames.single { it.frameIndex == finding.endFrameIndex }.timestamp
-            assertTrue(start in 400L..600L) // Observed placement after the lift.
-            assertTrue(end in 1_100L..1_500L) // Confirmation, not the end of all heel use.
+            assertTrue(HeelHookStrategy().classify(frames, ASPECT_RATIO).isEmpty())
         }
-    }
-
-    // Height, a bent knee and body movement alone should not label this toe-down raised-foot example.
-    @Test
-    fun classify_rejectsARaisedFootWithoutHeelOrientationEvidence() {
-        val frames = hookSequence().map { frame ->
-            val coordinates = frame.coordinates.copyOf()
-            coordinates[LEFT_FOOT_INDEX * PoseFrame.VALUES_PER_LANDMARK + 1] =
-                coordinates[LEFT_HEEL * PoseFrame.VALUES_PER_LANDMARK + 1] + 0.06f
-            frame.copy(coordinates = coordinates)
-        }
-
-        assertTrue(HeelHookStrategy().classify(frames, ASPECT_RATIO).isEmpty())
     }
 
     // A missing heel interrupts settling; shorter spans on either side must not be added together.

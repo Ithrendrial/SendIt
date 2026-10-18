@@ -18,10 +18,13 @@ internal class PoseMeasurements(private val frames: List<PoseFrame>, private val
 
     fun isUsable(index: Int) = measurements[index] != null
 
-    fun landmarkAt(framePosition: Int, landmarkId: Int): Point? {
+    fun landmarkAt(
+        framePosition: Int, landmarkId: Int,
+        minVisibility: Float = MIN_LANDMARK_CONFIDENCE, minPresence: Float = MIN_LANDMARK_CONFIDENCE
+    ): Point? {
         val frame = frames[framePosition]
         if (frame.coordinates.size != PoseFrame.LANDMARK_COUNT * PoseFrame.VALUES_PER_LANDMARK) return null
-        return landmark(frame, landmarkId, aspectRatio)
+        return landmark(frame, landmarkId, aspectRatio, minVisibility, minPresence)
     }
 
     fun isContinuous(previous: Int, current: Int) = isUsable(previous) && isUsable(current) &&
@@ -76,13 +79,16 @@ internal class PoseMeasurements(private val frames: List<PoseFrame>, private val
         return Measurements(pelvis, torsoLength, LIMB_LANDMARKS.map { landmark(frame, it, aspectRatio) })
     }
 
-    private fun landmark(frame: PoseFrame, index: Int, aspectRatio: Float): Point? {
+    private fun landmark(
+        frame: PoseFrame, index: Int, aspectRatio: Float,
+        minVisibility: Float = MIN_LANDMARK_CONFIDENCE, minPresence: Float = MIN_LANDMARK_CONFIDENCE
+    ): Point? {
         val offset = index * PoseFrame.VALUES_PER_LANDMARK
         val coordinates = frame.coordinates
         val visibility = coordinates[offset + VISIBILITY_OFFSET]
         val presence = coordinates[offset + PRESENCE_OFFSET]
         // Comparisons also reject NaN: unknown confidence must not become trusted evidence.
-        if (!(visibility >= MIN_LANDMARK_CONFIDENCE && presence >= MIN_LANDMARK_CONFIDENCE)) return null
+        if (!(visibility >= minVisibility && presence >= minPresence)) return null
         val x = coordinates[offset] * aspectRatio
         val y = coordinates[offset + 1]
         return if (x.isFinite() && y.isFinite()) Point(x, y) else null
@@ -92,12 +98,11 @@ internal class PoseMeasurements(private val frames: List<PoseFrame>, private val
 
     fun distance(a: Point, b: Point) = hypot(a.x - b.x, a.y - b.y)
 
-    fun kneeAngle(
-        hip: PoseMeasurements.Point, knee: PoseMeasurements.Point, ankle: PoseMeasurements.Point
-    ): Double {
-        val lengths = distance(hip, knee) * distance(ankle, knee)
+    // Angle at the middle joint; shared by knee-flexion and elbow-extension rules.
+    fun jointAngle(first: Point, joint: Point, last: Point): Double {
+        val lengths = distance(first, joint) * distance(last, joint)
         if (lengths <= 0f) return Double.NaN
-        val dot = (hip.x - knee.x) * (ankle.x - knee.x) + (hip.y - knee.y) * (ankle.y - knee.y)
+        val dot = (first.x - joint.x) * (last.x - joint.x) + (first.y - joint.y) * (last.y - joint.y)
         return Math.toDegrees(acos((dot / lengths).coerceIn(-1f, 1f).toDouble()))
     }
 

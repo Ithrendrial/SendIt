@@ -63,7 +63,7 @@ class FlaggingStrategy : ClassificationStrategy {
             val extension = (ankles[leg].x - hips[leg].x) * direction / scale
             val supportOffset = abs(ankles[otherLeg].x - pelvisX) / scale
             if (extension >= MIN_OUTSIDE_EXTENSION && supportOffset <= MAX_SUPPORT_OFFSET &&
-                measurements.kneeAngle(hips[leg], knees[leg], ankles[leg]) >= MIN_KNEE_ANGLE_DEGREES
+                measurements.jointAngle(hips[leg], knees[leg], ankles[leg]) >= MIN_KNEE_ANGLE_DEGREES
             ) return Candidate(leg, ankles[otherLeg])
         }
         return null

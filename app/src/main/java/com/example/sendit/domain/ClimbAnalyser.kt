@@ -26,7 +26,7 @@ class ClimbAnalyser(
         val findings = withContext(Dispatchers.Default) {
             classify(frames, aspectRatio) + classify(frames, aspectRatio, CruxStrategy()) +
                 classify(frames, aspectRatio, FlaggingStrategy()) + classify(frames, aspectRatio, DynoStrategy()) +
-                classify(frames, aspectRatio, HeelHookStrategy())
+                classify(frames, aspectRatio, HeelHookStrategy()) + classify(frames, aspectRatio, MantleStrategy())
         }
         repository.saveAnalysis(attemptId, frames, aspectRatio, findings)
     }

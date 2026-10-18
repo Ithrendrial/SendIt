@@ -16,7 +16,6 @@ class HeelHookStrategy : ClassificationStrategy {
             var windowStart = 0
             var historyStart = 0
             var stableMs = 0L
-            var toeUpMs = 0L
             var flexion = 0f
             var latched = false
 
@@ -24,7 +23,6 @@ class HeelHookStrategy : ClassificationStrategy {
                 placement = -1
                 lastReliable = -1
                 stableMs = 0L
-                toeUpMs = 0L
                 flexion = 0f
             }
 
@@ -38,7 +36,6 @@ class HeelHookStrategy : ClassificationStrategy {
                 if (current == null) {
                     // Retain a brief pending cue, but never add unknown time to confirmed settling.
                     stableMs = 0L
-                    toeUpMs = 0L
                     if (placement >= 0 && (frames[index].timestamp - frames[lastReliable].timestamp > MAX_PENDING_GAP_MS ||
                             frames[index].timestamp - frames[placement].timestamp > MAX_CONFIRMATION_MS)) resetCandidate()
                     continue
@@ -68,11 +65,9 @@ class HeelHookStrategy : ClassificationStrategy {
                 val stable = window.all { measurements.distance(window.first().heel, it.heel) / scale <= MAX_HEEL_EXCURSION }
                 if (!stable) {
                     stableMs = 0L
-                    toeUpMs = 0L
                 } else if (lastReliable == index - 1) {
                     val elapsed = frames[index].timestamp - frames[lastReliable].timestamp
                     stableMs += elapsed
-                    if (current.toeUp && observations[lastReliable]?.toeUp == true) toeUpMs += elapsed
                 }
                 lastReliable = index
 
@@ -85,8 +80,8 @@ class HeelHookStrategy : ClassificationStrategy {
                         flexion = maxOf(flexion, median(initialAngles) - median(currentAngles))
                     }
                 }
-                // Require both settled placement and observed leg use, not just a raised foot.
-                if (stableMs >= MIN_SETTLING_MS && toeUpMs * 2 >= stableMs &&
+                // Toe-up establishes placement; subsequent foot rotation is allowed during observed leg use.
+                if (stableMs >= MIN_SETTLING_MS &&
                     current.height >= -MAX_HEEL_BELOW_PELVIS && flexion >= MIN_KNEE_FLEXION_DEGREES) {
                     findings += Finding(
                         id = UUID.randomUUID().toString(), attemptId = frames[placement].attemptId,
@@ -109,7 +104,7 @@ class HeelHookStrategy : ClassificationStrategy {
         val knee = measurements.landmarkAt(index, LEFT_KNEE + leg)
         val ankle = measurements.landmarkAt(index, LEFT_ANKLE + leg)
         val angle = if (hip != null && knee != null && ankle != null) {
-            measurements.kneeAngle(hip, knee, ankle).takeIf { it.isFinite() }?.toFloat()
+            measurements.jointAngle(hip, knee, ankle).takeIf { it.isFinite() }?.toFloat()
         } else null
         return Observation(heel, (pelvis.y - heel.y) / scale, (heel.y - toe.y) / scale >= MIN_TOE_RISE, angle)
     }
@@ -146,7 +141,7 @@ class HeelHookStrategy : ClassificationStrategy {
         const val MAX_HEEL_BELOW_PELVIS = 0.5f // Torso lengths at placement and confirmation.
         const val REARM_HEEL_BELOW_PELVIS = 0.75f // Separate threshold avoids duplicate events while raised.
         const val MIN_TOE_RISE = 0.05f // Torso lengths above heel.
-        const val MAX_HEEL_EXCURSION = 0.15f // Torso lengths across each filtered observation window.
+        const val MAX_HEEL_EXCURSION = 0.25f // Torso lengths across each filtered observation window.
         const val MIN_KNEE_FLEXION_DEGREES = 20f // Change during use, not a prescribed knee angle.
         const val LEFT_HIP = 23
         const val LEFT_KNEE = 25
