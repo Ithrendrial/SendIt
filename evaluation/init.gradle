@@ -1,0 +1,19 @@
+gradle.afterProject { project ->
+    if (project.path == ':app') {
+        project.android.defaultConfig.applicationId = 'com.example.sendit.lightweight'
+        project.android.buildTypes.create('evaluation') {
+            initWith(project.android.buildTypes.getByName('release'))
+            signingConfig = project.android.signingConfigs.getByName('debug')
+            matchingFallbacks = ['release']
+        }
+        project.android.testBuildType = 'evaluation'
+        project.android.sourceSets.evaluation.manifest.srcFile(new File(project.rootDir, 'evaluation/TargetManifest.xml'))
+        project.android.sourceSets.androidTest.kotlin.srcDir(new File(project.rootDir, 'evaluation/tests'))
+        project.android.sourceSets.androidTest.java.srcDir(new File(project.rootDir, 'evaluation/tests'))
+        project.android.sourceSets.androidTest.manifest.srcFile(new File(project.rootDir, 'evaluation/AndroidManifest.xml'))
+        if (project.hasProperty('evaluationAssets')) project.android.sourceSets.androidTest.assets.srcDir(project.property('evaluationAssets'))
+        project.dependencies.add('androidTestImplementation', 'androidx.test.uiautomator:uiautomator:2.4.0')
+        project.dependencies.add('androidTestImplementation', 'androidx.test:runner:1.7.0')
+        project.dependencies.add('androidTestImplementation', 'androidx.test.ext:junit:1.3.0')
+    }
+}
